@@ -41,12 +41,12 @@ Scaffold only. Docs + license. No app code yet.
 ## Tech notes
 
 - Protocol: **ACP v1 (stable)**, local stdio subprocess only
-- Shell: lean **Electron** first (familiar, faster to prove the protocol); revisit Tauri later if size/native feel matters
-- Client SDK: `@agentclientprotocol/sdk` while on Electron
+- Shell: **Tauri 2** + **React** (small client, native webview; common among ACP desktops)
+- ACP client: official Rust crate [`agent-client-protocol`](https://crates.io/crates/agent-client-protocol) in the Tauri backend
+- First agent: **Grok Build** via `grok agent stdio`
 
 ### Still open
 
-- Electron vs Tauri longer term
 - Second agent: Codex vs Claude Code
 - Switcher UI: top dropdown vs left list
 
