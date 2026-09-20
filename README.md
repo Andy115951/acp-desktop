@@ -43,9 +43,18 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 ## Status
 
-Scaffold only. Docs + license. No app code yet.
+M1 scaffold in place: Tauri 2 + React (Vite/TS) + Tailwind + Zustand, with a `detect_agents` command that probes `PATH` for `grok` (and stub entries for later agents). No ACP handshake yet.
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
+
+## Develop
+
+Prerequisites: [Node.js](https://nodejs.org/), [Rust](https://rustup.rs/), and OS webview deps ([Tauri prerequisites](https://tauri.app/start/prerequisites/) — on macOS that means Xcode CLT / WebKit).
+
+```bash
+npm install
+npm run tauri dev
+```
 
 ## Roadmap
 
