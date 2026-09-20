@@ -45,6 +45,8 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 Scaffold only. Docs + license. No app code yet.
 
+Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
+
 ## Roadmap
 
 1. **Tauri skeleton + Grok detect** — empty window, Vite/React UI, PATH check for `grok`
