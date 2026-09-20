@@ -1,6 +1,10 @@
+mod acp_host;
+
+use acp_host::{AcpSession, AppState, SessionStatus};
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
+use tauri::Manager;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,12 +47,10 @@ fn binary_on_path(binary: &str) -> bool {
     false
 }
 
-/// Probe PATH for known agent CLIs. Grok is the M1 target; others are stubs for later.
 #[tauri::command]
 fn detect_agents() -> Vec<AgentInfo> {
     let agents = [
         ("grok", "Grok Build", "grok"),
-        // Future agents (detect stubs only — no ACP handshake yet)
         ("codex", "Codex", "codex"),
         ("claude", "Claude Code", "claude"),
     ];
@@ -64,11 +66,106 @@ fn detect_agents() -> Vec<AgentInfo> {
         .collect()
 }
 
+#[tauri::command]
+async fn connect_grok(app: tauri::AppHandle, cwd: String) -> Result<(), String> {
+    let path = PathBuf::from(&cwd);
+    if !path.is_dir() {
+        return Err(format!("Not a directory: {cwd}"));
+    }
+    if !binary_on_path("grok") {
+        return Err("`grok` not found on PATH".into());
+    }
+    AcpSession::start(app, path)
+}
+
+#[tauri::command]
+async fn disconnect_grok(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let mut guard = state.inner.lock().await;
+    if let Some(session) = guard.session.take() {
+        session.stop();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn send_prompt(app: tauri::AppHandle, text: String) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err("empty prompt".into());
+    }
+    let guard = state.inner.lock().await;
+    let session = guard
+        .session
+        .as_ref()
+        .ok_or_else(|| "not connected".to_string())?;
+    session.prompt(text).await
+}
+
+#[tauri::command]
+async fn cancel_prompt(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let guard = state.inner.lock().await;
+    let session = guard
+        .session
+        .as_ref()
+        .ok_or_else(|| "not connected".to_string())?;
+    session.cancel()
+}
+
+#[tauri::command]
+async fn respond_permission(
+    app: tauri::AppHandle,
+    request_id: u64,
+    option_id: Option<String>,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let guard = state.inner.lock().await;
+    let session = guard
+        .session
+        .as_ref()
+        .ok_or_else(|| "not connected".to_string())?;
+    session.respond_permission(request_id, option_id).await
+}
+
+#[tauri::command]
+async fn session_status(app: tauri::AppHandle) -> SessionStatus {
+    let state = app.state::<AppState>();
+    let guard = state.inner.lock().await;
+    match &guard.session {
+        Some(s) => SessionStatus {
+            connected: true,
+            cwd: Some(s.cwd.display().to_string()),
+            session_id: None,
+            busy: false,
+            error: None,
+        },
+        None => SessionStatus {
+            connected: false,
+            cwd: None,
+            session_id: None,
+            busy: false,
+            error: None,
+        },
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![detect_agents])
+        .plugin(tauri_plugin_dialog::init())
+        .manage(AppState::new())
+        .invoke_handler(tauri::generate_handler![
+            detect_agents,
+            connect_grok,
+            disconnect_grok,
+            send_prompt,
+            cancel_prompt,
+            respond_permission,
+            session_status
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
