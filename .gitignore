@@ -1,16 +1,32 @@
+# OS / editor
 .DS_Store
-node_modules/
-dist/
-build/
-out/
-target/
+.idea/
+.vscode/
 *.local
+
+# Secrets / env
 .env
 .env.*
 !.env.example
+
+# Logs
 *.log
-.idea/
-.vscode/
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+build/
+out/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+
+# Packaging artifacts
 *.dmg
 *.exe
 *.app
+*.AppImage
+*.deb
+*.rpm
