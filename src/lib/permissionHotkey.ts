@@ -35,3 +35,18 @@ export function permissionHotkeyAction(
 export function isNoPendingPermissionError(message: string): boolean {
   return /no pending permission/i.test(message);
 }
+
+/**
+ * Stale respond_permission id: host kept the real Ask oneshot.
+ * Do not dismiss the modal and do not surface a red error banner.
+ */
+export function isStalePermissionError(message: string): boolean {
+  return /stale permission request id/i.test(message);
+}
+
+/** Host errors that should not leave a scary banner over an open Ask. */
+export function isQuietPermissionHostError(message: string): boolean {
+  return (
+    isNoPendingPermissionError(message) || isStalePermissionError(message)
+  );
+}

@@ -935,4 +935,21 @@ mod pending_permission_tests {
         };
         assert!(err.contains("no pending"));
     }
+
+    /// After Cancel clears the slot, a late UI Allow must not panic — empty error.
+    #[tokio::test]
+    async fn cancel_then_take_matching_reports_no_pending() {
+        let slot: Mutex<Option<(u64, PendingPermission)>> = Mutex::new(None);
+        let (tx, rx) = oneshot::channel();
+        *slot.lock().await = Some((4, PendingPermission { reply: tx }));
+        assert!(cancel_pending_permission(&slot).await);
+        let _ = rx.await;
+
+        let mut guard = slot.lock().await;
+        let err = match take_matching_permission(&mut guard, 4) {
+            Err(e) => e,
+            Ok(_) => panic!("expected no pending after cancel"),
+        };
+        assert!(err.contains("no pending"));
+    }
 }

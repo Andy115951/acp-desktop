@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   isNoPendingPermissionError,
+  isQuietPermissionHostError,
+  isStalePermissionError,
   permissionHotkeyAction,
 } from "./permissionHotkey";
 
@@ -57,13 +59,32 @@ describe("permissionHotkeyAction", () => {
   });
 });
 
-describe("isNoPendingPermissionError", () => {
+describe("permission host error helpers", () => {
   it("matches host no-pending strings", () => {
     expect(isNoPendingPermissionError("no pending permission request")).toBe(
       true,
     );
     expect(isNoPendingPermissionError("No Pending Permission")).toBe(true);
     expect(isNoPendingPermissionError("stale permission request id")).toBe(
+      false,
+    );
+  });
+
+  it("matches stale id without treating it as no-pending", () => {
+    expect(isStalePermissionError("stale permission request id")).toBe(true);
+    expect(isStalePermissionError("no pending permission request")).toBe(
+      false,
+    );
+  });
+
+  it("quiet helper covers both race outcomes", () => {
+    expect(isQuietPermissionHostError("no pending permission request")).toBe(
+      true,
+    );
+    expect(isQuietPermissionHostError("stale permission request id")).toBe(
+      true,
+    );
+    expect(isQuietPermissionHostError("permission responder gone")).toBe(
       false,
     );
   });

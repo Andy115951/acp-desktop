@@ -3,7 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
-import { isNoPendingPermissionError } from "../lib/permissionHotkey";
+import {
+  isNoPendingPermissionError,
+  isStalePermissionError,
+} from "../lib/permissionHotkey";
 
 export type StreamLine = {
   id: string;
@@ -229,6 +232,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // Cancel / Disconnect already cleared the host oneshot — dismiss quietly.
       if (isNoPendingPermissionError(message)) {
         set({ permission: null });
+        return;
+      }
+      // Stale id: host kept the real Ask — leave modal up, no red banner.
+      if (isStalePermissionError(message)) {
         return;
       }
       set({ error: message });

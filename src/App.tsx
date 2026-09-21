@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
@@ -61,6 +61,13 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [permission, respondPermission]);
+
+  const allowButtonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!permission) return;
+    // Focus first Allow* (else first option) so Mac E2E keys land on the card.
+    allowButtonRef.current?.focus();
+  }, [permission]);
 
   const grok = agents.find((a) => a.id === "grok");
   const usingFake = !!override?.usingOverride;
@@ -315,14 +322,14 @@ export default function App() {
                 void send();
               }
             }}
-            disabled={!connected || busy}
+            disabled={!connected || busy || !!permission}
             placeholder={connected ? (usingFake ? "Message fake agent…" : "Message Grok…") : "Connect first"}
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 disabled:opacity-50"
           />
           <button
             type="button"
             onClick={() => void send()}
-            disabled={!connected || busy || !draft.trim()}
+            disabled={!connected || busy || !!permission || !draft.trim()}
             className="rounded-md bg-sky-700 px-3 py-2 text-sm text-white disabled:opacity-40"
           >
             Send
@@ -330,7 +337,14 @@ export default function App() {
           <button
             type="button"
             onClick={() => void cancel()}
-            disabled={!connected || !busy}
+            disabled={!connected || (!busy && !permission)}
+            title={
+              permission
+                ? "Cancel prompt and clear pending Ask"
+                : busy
+                  ? "Cancel in-flight prompt"
+                  : undefined
+            }
             className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 disabled:opacity-40"
           >
             Cancel
@@ -346,13 +360,24 @@ export default function App() {
             </h3>
             <p className="text-xs text-slate-400 break-all">{permission.detail}</p>
             <div className="flex flex-wrap gap-2 pt-2">
-              {permission.options.map((opt) => (
+              {permission.options.map((opt, idx) => {
+                const isAllow = opt.kind.startsWith("Allow");
+                const focusFirst =
+                  isAllow
+                    ? permission.options.findIndex((o) =>
+                        o.kind.startsWith("Allow"),
+                      ) === idx
+                    : permission.options.findIndex((o) =>
+                        o.kind.startsWith("Allow"),
+                      ) < 0 && idx === 0;
+                return (
                 <button
                   key={opt.id}
                   type="button"
+                  ref={focusFirst ? allowButtonRef : undefined}
                   onClick={() => void respondPermission(opt.id)}
                   className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                    opt.kind.startsWith("Allow")
+                    isAllow
                       ? "bg-emerald-700 text-white"
                       : opt.kind.startsWith("Reject")
                         ? "bg-red-800 text-white"
@@ -361,7 +386,8 @@ export default function App() {
                 >
                   {opt.name}
                 </button>
-              ))}
+                );
+              })}
               <button
                 type="button"
                 onClick={() => void respondPermission(null)}
