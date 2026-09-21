@@ -33,10 +33,12 @@ Rust trait (name may vary) owned by the host:
 - `initialize` / `session_new` / `session_load` / `prompt` / `cancel`
 - map agent → client requests: especially `session/request_permission` → UI allow/deny
 
-First implementation: **GrokBackend** (`grok`, args `["agent", "stdio"]`).  
-Second implementation (later): thin wrapper around an ACP adapter command, same trait — no UI fork per vendor.
+First implementation: **GrokBackend** (`grok`, args `["agent", "stdio"]`) in `src-tauri/src/agent_backend.rs`.
+Host commands: `detect_agents`, `connect_agent(agent_id, …)`, `disconnect_agent` — UI never imports vendor spawn details.
+ACP session ops (`initialize` / `session/*` / permission replies) stay on the shared `AcpSession` bridge (protocol-identical for stdio agents).
+Second implementation (later / M4): thin wrapper around an ACP adapter command, same trait — no UI fork per vendor.
 
-Built-in agent table + optional user overrides (command / args / env). Do **not** depend on the ACP Registry for v1.
+Built-in agent table + optional user overrides (`ACP_DESKTOP_AGENT_CMD` / `ACP_DESKTOP_FAKE_AGENT`). Do **not** depend on the ACP Registry for v1.
 
 ## Event flow (one turn)
 

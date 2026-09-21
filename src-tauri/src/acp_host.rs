@@ -1,4 +1,4 @@
-//! Long-lived Grok ACP session bridged into Tauri.
+//! Long-lived ACP session bridged into Tauri (agent-agnostic stdio host).
 
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
@@ -12,7 +12,6 @@ use agent_client_protocol::{
     AcpAgent, Agent, Client, ConnectionTo, SessionMessage,
 };
 use serde::Serialize;
-use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -57,158 +56,7 @@ pub struct SessionStatus {
 }
 
 
-/// Resolve the ACP agent subprocess command.
-///
-/// Priority:
-/// 1. `ACP_DESKTOP_AGENT_CMD` — whitespace-split command + args (for tests / custom agents)
-/// 2. `ACP_DESKTOP_FAKE_AGENT=1` — spawn in-repo `fake-acp-agent` (PATH, then
-///    workspace `target/{debug,release}/fake-acp-agent`)
-/// 3. Default: `grok agent stdio`
-pub fn resolve_agent_command() -> Result<Vec<String>, String> {
-    if let Ok(cmd) = env::var("ACP_DESKTOP_AGENT_CMD") {
-        let parts: Vec<String> = cmd.split_whitespace().map(|s| s.to_string()).collect();
-        if parts.is_empty() {
-            return Err("ACP_DESKTOP_AGENT_CMD is empty".into());
-        }
-        return Ok(parts);
-    }
-
-    let fake = env::var("ACP_DESKTOP_FAKE_AGENT").unwrap_or_default();
-    if fake == "1" || fake.eq_ignore_ascii_case("true") {
-        let path = find_fake_agent_bin().ok_or_else(|| {
-            "fake-acp-agent not found (build with `cargo build -p fake-acp-agent`,              put it on PATH, or set ACP_DESKTOP_AGENT_CMD to its absolute path)"
-                .to_string()
-        })?;
-        return Ok(vec![path.display().to_string()]);
-    }
-
-    Ok(vec!["grok".into(), "agent".into(), "stdio".into()])
-}
-
-pub fn using_override_agent() -> bool {
-    env::var("ACP_DESKTOP_AGENT_CMD").is_ok()
-        || matches!(
-            env::var("ACP_DESKTOP_FAKE_AGENT").ok().as_deref(),
-            Some("1") | Some("true") | Some("TRUE")
-        )
-}
-
-/// Locate the in-repo fake agent binary for deterministic permission smoke.
-pub fn find_fake_agent_bin() -> Option<PathBuf> {
-    if binary_named_on_path("fake-acp-agent") {
-        return Some(PathBuf::from("fake-acp-agent"));
-    }
-
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // src-tauri crate → workspace root is parent
-    let workspace = manifest_dir.parent().unwrap_or(manifest_dir.as_path());
-    let mut candidates = vec![
-        workspace.join("target/debug/fake-acp-agent"),
-        workspace.join("target/release/fake-acp-agent"),
-    ];
-    #[cfg(windows)]
-    {
-        candidates.push(workspace.join("target/debug/fake-acp-agent.exe"));
-        candidates.push(workspace.join("target/release/fake-acp-agent.exe"));
-    }
-
-    if let Ok(cwd) = env::current_dir() {
-        candidates.push(cwd.join("target/debug/fake-acp-agent"));
-        candidates.push(cwd.join("target/release/fake-acp-agent"));
-        candidates.push(cwd.join("fake-acp-agent"));
-    }
-
-    for candidate in candidates {
-        if candidate.is_file() {
-            return Some(
-                candidate
-                    .canonicalize()
-                    .unwrap_or(candidate),
-            );
-        }
-    }
-    None
-}
-
-fn binary_named_on_path(binary: &str) -> bool {
-    let Some(path_os) = env::var_os("PATH") else {
-        return false;
-    };
-    let names: Vec<PathBuf> = {
-        #[cfg(windows)]
-        {
-            vec![
-                PathBuf::from(binary),
-                PathBuf::from(format!("{binary}.exe")),
-                PathBuf::from(format!("{binary}.cmd")),
-                PathBuf::from(format!("{binary}.bat")),
-            ]
-        }
-        #[cfg(not(windows))]
-        {
-            vec![PathBuf::from(binary)]
-        }
-    };
-    for dir in env::split_paths(&path_os) {
-        for name in &names {
-            let full = dir.join(name);
-            if full.is_file() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentOverrideStatus {
-    /// `grok` | `fake` | `custom`
-    pub mode: String,
-    pub command: Vec<String>,
-    pub using_override: bool,
-    /// Absolute (or PATH) path when fake binary is resolvable.
-    pub fake_agent_path: Option<String>,
-}
-
-pub fn agent_override_status() -> Result<AgentOverrideStatus, String> {
-    let command = resolve_agent_command()?;
-    let using_override = using_override_agent();
-    let mode = if env::var("ACP_DESKTOP_AGENT_CMD").is_ok()
-        && !matches!(
-            env::var("ACP_DESKTOP_FAKE_AGENT").ok().as_deref(),
-            Some("1") | Some("true") | Some("TRUE")
-        )
-    {
-        "custom".into()
-    } else if using_override {
-        "fake".into()
-    } else {
-        "grok".into()
-    };
-    Ok(AgentOverrideStatus {
-        mode,
-        command,
-        using_override,
-        fake_agent_path: find_fake_agent_bin().map(|p| p.display().to_string()),
-    })
-}
-
-/// Dev/session toggle: point the host at the in-repo fake agent (process env only).
-pub fn set_fake_agent_enabled(enabled: bool) -> Result<AgentOverrideStatus, String> {
-    if enabled {
-        let path = find_fake_agent_bin().ok_or_else(|| {
-            "fake-acp-agent not built. Run: cargo build -p fake-acp-agent".to_string()
-        })?;
-        // Prefer absolute CMD so spawn does not depend on PATH inside Tauri.
-        env::set_var("ACP_DESKTOP_AGENT_CMD", path.display().to_string());
-        env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
-    } else {
-        env::remove_var("ACP_DESKTOP_AGENT_CMD");
-        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
-    }
-    agent_override_status()
-}
+// Agent command resolution / fake toggle: see `agent_backend`.
 
 enum HostCommand {
     Prompt {
@@ -302,7 +150,7 @@ impl Clone for AcpSession {
 }
 
 impl AcpSession {
-    /// Start a Grok ACP session.
+    /// Start an ACP stdio session for the given agent argv.
     ///
     /// When `resume_session_id` is `Some`, uses `ConnectionTo::load_session` /
     /// `session/load` after initialize (if the agent advertises `loadSession`).
@@ -319,6 +167,7 @@ impl AcpSession {
         app: AppHandle,
         cwd: PathBuf,
         resume_session_id: Option<String>,
+        agent_argv: Vec<String>,
     ) -> Result<(), String> {
         let state = app.state::<AppState>();
 
@@ -338,6 +187,7 @@ impl AcpSession {
         let session_id_for_task = session_id.clone();
         let app_for_status = app.clone();
         let resume_for_task = resume_session_id;
+        let agent_argv_for_task = agent_argv;
 
         let session = AcpSession {
             cmd_tx,
@@ -371,27 +221,7 @@ impl AcpSession {
                     .build()
                     .expect("tokio runtime");
                 let _ = rt.block_on(async move {
-                    let agent_args = match resolve_agent_command() {
-                        Ok(args) => args,
-                        Err(e) => {
-                            let msg = e.clone();
-                            let _ = app_for_status.emit(
-                                "acp://status",
-                                SessionStatus {
-                                    connected: false,
-                                    cwd: Some(cwd_for_task.display().to_string()),
-                                    session_id: None,
-                                    busy: false,
-                                    error: Some(e),
-                                    load_session_supported: None,
-                                },
-                            );
-                            clear_session_slot(&app_for_status);
-                            signal_connect_ready(&ready_for_thread, Err(msg));
-                            return;
-                        }
-                    };
-                    let agent = match AcpAgent::from_args(agent_args) {
+                    let agent = match AcpAgent::from_args(agent_argv_for_task) {
                         Ok(a) => a,
                         Err(e) => {
                             let msg = format!("Failed to configure agent: {e}");
@@ -627,7 +457,7 @@ impl AcpSession {
                                         load_session_supported: Some(load_session_supported),
                                     },
                                 );
-                                // Unblock connect_grok only once the session is usable.
+                                // Unblock connect_agent only once the session is usable.
                                 signal_connect_ready(&ready_for_thread, Ok(()));
 
                                 while let Some(cmd) = cmd_rx.recv().await {

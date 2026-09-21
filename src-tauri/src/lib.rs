@@ -1,77 +1,27 @@
+mod agent_backend;
 mod acp_host;
 
-use acp_host::{
-    agent_override_status, resolve_agent_command, set_fake_agent_enabled,
-    using_override_agent, AcpSession, AgentOverrideStatus, AppState, SessionStatus,
+use acp_host::{AcpSession, AppState, SessionStatus};
+use agent_backend::{
+    agent_override_status, detect_builtin_agents, lookup_backend, resolve_agent_command,
+    set_fake_agent_enabled, using_override_agent, AgentInfo, AgentOverrideStatus,
 };
-use serde::Serialize;
-use std::env;
 use std::path::PathBuf;
 use tauri::Manager;
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentInfo {
-    pub id: String,
-    pub name: String,
-    pub binary: String,
-    pub available: bool,
-}
-
-fn binary_on_path(binary: &str) -> bool {
-    let Some(path_os) = env::var_os("PATH") else {
-        return false;
-    };
-
-    let candidates: Vec<PathBuf> = {
-        #[cfg(windows)]
-        {
-            vec![
-                PathBuf::from(binary),
-                PathBuf::from(format!("{binary}.exe")),
-                PathBuf::from(format!("{binary}.cmd")),
-                PathBuf::from(format!("{binary}.bat")),
-            ]
-        }
-        #[cfg(not(windows))]
-        {
-            vec![PathBuf::from(binary)]
-        }
-    };
-
-    for dir in env::split_paths(&path_os) {
-        for name in &candidates {
-            let full = dir.join(name);
-            if full.is_file() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 #[tauri::command]
 fn detect_agents() -> Vec<AgentInfo> {
-    let agents = [
-        ("grok", "Grok Build", "grok"),
-        ("codex", "Codex", "codex"),
-        ("claude", "Claude Code", "claude"),
-    ];
-
-    agents
-        .into_iter()
-        .map(|(id, name, binary)| AgentInfo {
-            id: id.to_string(),
-            name: name.to_string(),
-            binary: binary.to_string(),
-            available: binary_on_path(binary),
-        })
-        .collect()
+    detect_builtin_agents()
 }
 
+/// Connect the selected built-in agent (or fake/custom override) via ACP stdio.
+///
+/// UI must pass `agent_id` from `detect_agents` (e.g. `"grok"`). Vendor spawn
+/// details stay behind [`agent_backend::AgentBackend`] — no UI fork per CLI.
 #[tauri::command]
-async fn connect_grok(
+async fn connect_agent(
     app: tauri::AppHandle,
+    agent_id: String,
     cwd: String,
     resume_session_id: Option<String>,
 ) -> Result<(), String> {
@@ -79,17 +29,21 @@ async fn connect_grok(
     if !path.is_dir() {
         return Err(format!("Not a directory: {cwd}"));
     }
-    if !using_override_agent() && !binary_on_path("grok") {
-        return Err("`grok` not found on PATH (or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD)".into());
+
+    let backend = lookup_backend(&agent_id)?;
+    if !using_override_agent() && !backend.detect() {
+        return Err(format!(
+            "`{}` not found on PATH (or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD)",
+            backend.binary()
+        ));
     }
-    // Validate override command early so UI gets a clear error.
-    let _ = resolve_agent_command()?;
+    let agent_argv = resolve_agent_command(backend)?;
     // Awaits initialize + session/new|load so Connect stays busy until ready.
-    AcpSession::start(app, path, resume_session_id).await
+    AcpSession::start(app, path, resume_session_id, agent_argv).await
 }
 
 #[tauri::command]
-async fn disconnect_grok(app: tauri::AppHandle) -> Result<(), String> {
+async fn disconnect_agent(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let session = {
         let mut guard = state
@@ -216,8 +170,8 @@ pub fn run() {
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             detect_agents,
-            connect_grok,
-            disconnect_grok,
+            connect_agent,
+            disconnect_agent,
             send_prompt,
             cancel_prompt,
             respond_permission,
@@ -232,15 +186,19 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agent_backend::{resolve_default_agent_command, GrokBackend};
     use std::sync::Mutex;
 
     // Serialize env-mutating tests (cargo may run test threads in parallel).
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn detect_agents_includes_grok() {
+    fn detect_agents_includes_grok_connectable() {
         let agents = detect_agents();
-        assert!(agents.iter().any(|a| a.id == "grok" && a.binary == "grok"));
+        let grok = agents.iter().find(|a| a.id == "grok").expect("grok");
+        assert_eq!(grok.binary, "grok");
+        assert!(grok.connectable);
+        assert!(agents.iter().any(|a| a.id == "codex" && !a.connectable));
     }
 
     #[test]
@@ -249,7 +207,7 @@ mod tests {
         std::env::remove_var("ACP_DESKTOP_AGENT_CMD");
         std::env::remove_var("ACP_DESKTOP_FAKE_AGENT");
         assert_eq!(
-            resolve_agent_command().unwrap(),
+            resolve_default_agent_command().unwrap(),
             vec!["grok", "agent", "stdio"]
         );
         assert!(!using_override_agent());
@@ -260,7 +218,7 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("ACP_DESKTOP_AGENT_CMD");
         std::env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
-        let cmd = resolve_agent_command().expect("fake agent should resolve after cargo build");
+        let cmd = resolve_default_agent_command().expect("fake agent should resolve after cargo build");
         assert_eq!(cmd.len(), 1);
         assert!(
             cmd[0].ends_with("fake-acp-agent") || cmd[0].ends_with("fake-acp-agent.exe"),
@@ -292,10 +250,18 @@ mod tests {
         std::env::set_var("ACP_DESKTOP_AGENT_CMD", "/tmp/fake-acp-agent");
         std::env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
         assert_eq!(
-            resolve_agent_command().unwrap(),
+            resolve_agent_command(&GrokBackend).unwrap(),
             vec!["/tmp/fake-acp-agent"]
         );
         std::env::remove_var("ACP_DESKTOP_AGENT_CMD");
         std::env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+    }
+
+    #[test]
+    fn lookup_rejects_unimplemented_agent() {
+        match lookup_backend("claude") {
+            Ok(_) => panic!("claude should not be connectable yet"),
+            Err(err) => assert!(err.contains("M4") || err.contains("not wired"), "{err}"),
+        }
     }
 }

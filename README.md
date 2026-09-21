@@ -49,7 +49,7 @@ Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming tur
 
 Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2 Done on the [project board](https://github.com/users/Andy115951/projects/2)). Optional polish [#9](https://github.com/Andy115951/acp-desktop/pull/9) (last workspace folder prefs) is merged to `main`.
 
-**Next on the board:** [#4](https://github.com/Andy115951/acp-desktop/issues/4) M3 `AgentBackend` (then M4 second agent / switcher, M5 packaging). Until M3 starts, keep the Grok path solid — no second-agent productization and no packaging yet.
+**In progress:** [#4](https://github.com/Andy115951/acp-desktop/issues/4) M3 `AgentBackend` — Rust trait + `GrokBackend`, built-in agent table, UI via `connect_agent` / `disconnect_agent` (no vendor-specific UI paths). Next: M4 second agent / switcher, then M5 packaging.
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
