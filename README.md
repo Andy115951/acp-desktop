@@ -47,7 +47,9 @@ M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://
 
 Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` / `cargo test -p acp-desktop` + Vitest/`tsc` (CI on push/PR) cover `session/request_permission` allow/deny and `loadSession` replay without Grok. Host deadline-drains `session/load` ActiveSession replay so Resume does not miss `fake-agent: resumed`.
 
-Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) stays open only for the maintainer to close (current PAT lacks Issues write) and any optional real-Mac Grok UI pass you still want — automated fake-agent + tests/CI already land on `main`.
+Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2 Done on the [project board](https://github.com/users/Andy115951/projects/2)). Optional polish [#9](https://github.com/Andy115951/acp-desktop/pull/9) (last workspace folder prefs) is merged to `main`.
+
+**Next on the board:** [#4](https://github.com/Andy115951/acp-desktop/issues/4) M3 `AgentBackend` (then M4 second agent / switcher, M5 packaging). Until M3 starts, keep the Grok path solid — no second-agent productization and no packaging yet.
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
@@ -91,9 +93,9 @@ ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
 
 ## Roadmap
 
-1. **Tauri skeleton + Grok detect** — empty window, Vite/React UI, PATH check for `grok`
-2. **Grok ACP path** — handshake → one streaming turn → permission cards → pick folder / resume session
-3. **AgentBackend** — abstract the transport so a second CLI can plug in
+1. **Tauri skeleton + Grok detect** — done (M1 / [#2](https://github.com/Andy115951/acp-desktop/issues/2))
+2. **Grok ACP path** — done (M2 / [#3](https://github.com/Andy115951/acp-desktop/issues/3), [#8](https://github.com/Andy115951/acp-desktop/pull/8) + [#9](https://github.com/Andy115951/acp-desktop/pull/9))
+3. **AgentBackend** — abstract the transport so a second CLI can plug in (next; not started)
 4. **Multi-agent switch** — add one of Codex or Claude; switcher UI
 5. **macOS packaging** — after the above works
 
