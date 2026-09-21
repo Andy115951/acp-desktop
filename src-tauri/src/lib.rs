@@ -3,8 +3,9 @@ mod acp_host;
 
 use acp_host::{AcpSession, AppState, SessionStatus};
 use agent_backend::{
-    agent_override_status, detect_builtin_agents, lookup_backend, resolve_agent_command,
-    set_fake_agent_enabled, using_override_agent, AgentInfo, AgentOverrideStatus,
+    agent_override_status, detect_builtin_agents, enrich_connect_error, lookup_backend,
+    missing_agent_message, resolve_agent_command, set_fake_agent_enabled, using_override_agent,
+    AgentInfo, AgentOverrideStatus,
 };
 use std::path::PathBuf;
 use tauri::Manager;
@@ -32,14 +33,13 @@ async fn connect_agent(
 
     let backend = lookup_backend(&agent_id)?;
     if !using_override_agent() && !backend.detect() {
-        return Err(format!(
-            "`{}` not found on PATH (or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD)",
-            backend.binary()
-        ));
+        return Err(missing_agent_message(backend));
     }
     let agent_argv = resolve_agent_command(backend)?;
     // Awaits initialize + session/new|load so Connect stays busy until ready.
-    AcpSession::start(app, path, resume_session_id, agent_argv).await
+    AcpSession::start(app, path, resume_session_id, agent_argv, agent_id.clone())
+        .await
+        .map_err(|e| enrich_connect_error(&agent_id, &e))
 }
 
 #[tauri::command]

@@ -7,6 +7,7 @@ import {
   canSendPrompt,
   draftEnterShouldSend,
 } from "./lib/sessionUiGates";
+import { agentAuthHint } from "./lib/agentHints";
 import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
 
@@ -116,6 +117,7 @@ export default function App() {
   const canConnectNew = canConnectNewSession(uiGates);
   const canSend = canSendPrompt(uiGates);
   const canCancel = canCancelPrompt(uiGates);
+  const authHint = agentAuthHint(selectedAgentId, usingFake);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-8">
@@ -168,6 +170,11 @@ export default function App() {
         </div>
         {detectError ? (
           <p className="mb-2 text-sm text-red-300">{detectError}</p>
+        ) : null}
+        {authHint ? (
+          <p className="mb-3 rounded-md border border-sky-900/50 bg-sky-950/30 px-3 py-2 text-xs text-sky-200/90">
+            {authHint}
+          </p>
         ) : null}
         <ul className="divide-y divide-slate-800">
           {agents.map((agent) => {

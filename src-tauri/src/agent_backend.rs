@@ -332,6 +332,101 @@ pub fn set_fake_agent_enabled(enabled: bool) -> Result<AgentOverrideStatus, Stri
     agent_override_status()
 }
 
+
+/// Clear message when detect() fails before spawn (Connect preflight).
+pub fn missing_agent_message(backend: &dyn AgentBackend) -> String {
+    match backend.id() {
+        "codex" => concat!(
+            "Codex ACP not found on PATH. Install `codex` and/or `codex-acp` ",
+            "(`npm i -g @agentclientprotocol/codex-acp`), or ensure `npx`/`node` ",
+            "is available so Connect can fall back to ",
+            "`npx -y @agentclientprotocol/codex-acp`. ",
+            "Auth stays with the local CLI: ChatGPT login or ",
+            "`CODEX_API_KEY` / `OPENAI_API_KEY`."
+        )
+        .into(),
+        "grok" => format!(
+            "`{}` not found on PATH. Install Grok Build CLI, or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD.",
+            backend.binary()
+        ),
+        _ => format!(
+            "`{}` not found on PATH (or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD)",
+            backend.binary()
+        ),
+    }
+}
+
+fn looks_like_auth_failure(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    [
+        "auth",
+        "unauthor",
+        "login",
+        "chatgpt",
+        "api key",
+        "api_key",
+        "apikey",
+        "codex_api_key",
+        "openai_api_key",
+        "not signed",
+        "sign in",
+        "401",
+        "403",
+        "forbidden",
+        "credential",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
+}
+
+fn looks_like_spawn_failure(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    [
+        "no such file",
+        "not found",
+        "enoent",
+        "spawn",
+        "executable",
+        "npx",
+        "failed to configure",
+        "failed to spawn",
+        "command not found",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
+}
+
+/// Append vendor-specific guidance to a raw connect/handshake error.
+///
+/// Keeps the original message first so matchers like `session/load failed`
+/// still work on the leading text.
+pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return raw.to_string();
+    }
+    // Avoid stacking the same hint if we already enriched once.
+    if raw.contains("Codex auth:") || raw.contains("Codex ACP:") {
+        return raw.to_string();
+    }
+    match agent_id.trim() {
+        "codex" if looks_like_auth_failure(raw) => format!(
+            "{raw}\n\nCodex auth: sign in via the local `codex` CLI (ChatGPT), \
+             or set `CODEX_API_KEY` / `OPENAI_API_KEY` in the environment, then retry Connect."
+        ),
+        "codex" if looks_like_spawn_failure(raw) => format!(
+            "{raw}\n\nCodex ACP: install `codex-acp` (`npm i -g @agentclientprotocol/codex-acp`) \
+             or ensure `npx`/`node` is on PATH. Detect also accepts a local `codex` binary."
+        ),
+        "codex" => format!(
+            "{raw}\n\nIf this looks like missing install or auth: install `codex`/`codex-acp`, \
+             complete ChatGPT login in the Codex CLI (or set `CODEX_API_KEY` / `OPENAI_API_KEY`), \
+             then retry Connect."
+        ),
+        _ => raw.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,4 +505,44 @@ mod tests {
         );
         env::remove_var("ACP_DESKTOP_AGENT_CMD");
     }
+
+    #[test]
+    fn missing_agent_message_codex_mentions_auth() {
+        let msg = missing_agent_message(&CODEX_BACKEND);
+        assert!(msg.contains("Codex"), "{msg}");
+        assert!(
+            msg.contains("CODEX_API_KEY") || msg.contains("ChatGPT"),
+            "{msg}"
+        );
+        assert!(msg.contains("codex-acp") || msg.contains("npx"), "{msg}");
+    }
+
+    #[test]
+    fn enrich_connect_error_codex_auth() {
+        let out = enrich_connect_error("codex", "initialize failed: unauthorized");
+        assert!(out.starts_with("initialize failed"), "{out}");
+        assert!(out.contains("Codex auth:"), "{out}");
+        assert!(out.contains("CODEX_API_KEY"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_codex_spawn() {
+        let out = enrich_connect_error("codex", "Failed to configure agent: No such file or directory");
+        assert!(out.contains("Codex ACP:"), "{out}");
+        assert!(out.contains("npx"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_preserves_session_load_prefix() {
+        let raw = "session/load failed: unknown id. You can start a New session.";
+        let out = enrich_connect_error("codex", raw);
+        assert!(out.starts_with("session/load failed"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_noop_for_grok() {
+        let raw = "something broke";
+        assert_eq!(enrich_connect_error("grok", raw), raw);
+    }
+
 }

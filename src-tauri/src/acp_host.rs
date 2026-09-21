@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+use crate::agent_backend::enrich_connect_error;
 use std::sync::{Mutex as StdMutex};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -168,6 +169,7 @@ impl AcpSession {
         cwd: PathBuf,
         resume_session_id: Option<String>,
         agent_argv: Vec<String>,
+        agent_id: String,
     ) -> Result<(), String> {
         let state = app.state::<AppState>();
 
@@ -188,6 +190,7 @@ impl AcpSession {
         let app_for_status = app.clone();
         let resume_for_task = resume_session_id;
         let agent_argv_for_task = agent_argv;
+        let agent_id_for_task = agent_id.clone();
 
         let session = AcpSession {
             cmd_tx,
@@ -224,7 +227,10 @@ impl AcpSession {
                     let agent = match AcpAgent::from_args(agent_argv_for_task) {
                         Ok(a) => a,
                         Err(e) => {
-                            let msg = format!("Failed to configure agent: {e}");
+                            let msg = enrich_connect_error(
+                                &agent_id_for_task,
+                                &format!("Failed to configure agent: {e}"),
+                            );
                             let _ = app_for_status.emit(
                                 "acp://status",
                                 SessionStatus {
@@ -526,7 +532,7 @@ impl AcpSession {
                         .await;
 
                     if let Err(e) = connect_result {
-                        let msg = format!("{e}");
+                        let msg = enrich_connect_error(&agent_id_for_task, &format!("{e}"));
                         let _ = app_for_status.emit(
                             "acp://status",
                             SessionStatus {
@@ -564,7 +570,7 @@ impl AcpSession {
             .map_err(|e| {
                 // Spawn failed — slot still holds the unused session handle.
                 clear_session_slot(&app);
-                format!("failed to spawn acp thread: {e}")
+                enrich_connect_error(&agent_id, &format!("failed to spawn acp thread: {e}"))
             })?;
 
         // Wait until initialize + session/new|load finishes (or fails).
