@@ -32,6 +32,7 @@ export default function App() {
     draft,
     setDraft,
     pickFolder,
+    hydrateFromPrefs,
     connect,
     disconnect,
     send,
@@ -44,6 +45,10 @@ export default function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    void hydrateFromPrefs();
+  }, [hydrateFromPrefs]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -104,7 +109,7 @@ export default function App() {
           acp-desktop
         </h1>
         <p className="text-sm text-slate-400">
-          M2: pick a folder, connect Grok via{" "}
+          Grok ACP path: last folder restores on launch; connect via{" "}
           <code className="text-slate-300">grok agent stdio</code>, stream a
           turn, approve tools with Ask, resume via{" "}
           <code className="text-slate-300">session/load</code>.

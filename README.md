@@ -43,9 +43,11 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 ## Status
 
-M1 is on `main`. **M2 (Grok ACP path)** is in progress on [`feat/m2-grok-acp`](https://github.com/Andy115951/acp-desktop/pull/8): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences store only cwd→sessionId (no chat history).
+M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://github.com/Andy115951/acp-desktop/pull/8)): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences (`tauri-plugin-store`) keep cwd→sessionId **and** last workspace folder so relaunch restores the folder for Connect/Resume (no chat history locally).
 
-Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` covers `session/request_permission` allow/deny **and** `loadSession` / `session/load` replay (`fake-agent: resumed`) without Grok (real Grok often skips surfacing permissions). Host now deadline-drains `session/load` ActiveSession replay (fixes missed `fake-agent: resumed` after Disconnect→Resume). Full in-app UI E2E (permission cards + Disconnect→Resume with fake agent) is still the remaining gate before closing [#3](https://github.com/Andy115951/acp-desktop/issues/3).
+Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` / `cargo test -p acp-desktop` + Vitest/`tsc` (CI on push/PR) cover `session/request_permission` allow/deny and `loadSession` replay without Grok. Host deadline-drains `session/load` ActiveSession replay so Resume does not miss `fake-agent: resumed`.
+
+Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) stays open only for the maintainer to close (current PAT lacks Issues write) and any optional real-Mac Grok UI pass you still want — automated fake-agent + tests/CI already land on `main`.
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
