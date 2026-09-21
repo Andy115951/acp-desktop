@@ -291,27 +291,27 @@ impl AcpSession {
     /// When `resume_session_id` is `Some`, uses `ConnectionTo::load_session` /
     /// `session/load` after initialize (if the agent advertises `loadSession`).
     /// Otherwise creates a new session via `session/new`.
-    pub fn start(
+    /// Spawn the ACP thread and **await handshake** (`initialize` +
+    /// `session/new` or `session/load`) before returning.
+    ///
+    /// Installs the session slot *before* the thread runs so Disconnect works
+    /// during connect, and so early failures can `clear_session_slot` without
+    /// racing a late install that would leave a zombie half-connected session.
+    /// Returning only after ready keeps the UI `busy` flag honest: Connect /
+    /// Resume stay disabled until the session is actually usable (or failed).
+    pub async fn start(
         app: AppHandle,
         cwd: PathBuf,
         resume_session_id: Option<String>,
     ) -> Result<(), String> {
         let state = app.state::<AppState>();
-        {
-            let guard = state
-                .inner
-                .lock()
-                .map_err(|_| "session state lock poisoned".to_string())?;
-            if guard.session.is_some() {
-                return Err("A session is already connected. Disconnect first.".into());
-            }
-        }
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<HostCommand>();
         let pending_permission: Arc<Mutex<Option<(u64, PendingPermission)>>> =
             Arc::new(Mutex::new(None));
         let next_perm_id = Arc::new(Mutex::new(1u64));
         let session_id: Arc<Mutex<Option<SessionId>>> = Arc::new(Mutex::new(None));
+        let (ready_tx, ready_rx) = oneshot::channel::<Result<(), String>>();
 
         let pending_for_handler = pending_permission.clone();
         let pending_for_cmds = pending_permission.clone();
@@ -323,7 +323,29 @@ impl AcpSession {
         let app_for_status = app.clone();
         let resume_for_task = resume_session_id;
 
+        let session = AcpSession {
+            cmd_tx,
+            pending_permission,
+            next_perm_id,
+            cwd,
+            session_id,
+        };
+
+        // Install before spawn so clear_session_slot / Disconnect always see it.
+        {
+            let mut guard = state
+                .inner
+                .lock()
+                .map_err(|_| "session state lock poisoned".to_string())?;
+            if guard.session.is_some() {
+                return Err("A session is already connected. Disconnect first.".into());
+            }
+            guard.session = Some(session);
+        }
+
         // Spawn the ACP connection on a dedicated OS thread with its own runtime.
+        let ready_slot: ConnectReadySlot = Arc::new(StdMutex::new(Some(ready_tx)));
+        let ready_for_thread = ready_slot.clone();
         std::thread::Builder::new()
             .name("acp-agent".into())
             .spawn(move || {
@@ -336,6 +358,7 @@ impl AcpSession {
                     let agent_args = match resolve_agent_command() {
                         Ok(args) => args,
                         Err(e) => {
+                            let msg = e.clone();
                             let _ = app_for_status.emit(
                                 "acp://status",
                                 SessionStatus {
@@ -348,12 +371,14 @@ impl AcpSession {
                                 },
                             );
                             clear_session_slot(&app_for_status);
+                            signal_connect_ready(&ready_for_thread, Err(msg));
                             return;
                         }
                     };
                     let agent = match AcpAgent::from_args(agent_args) {
                         Ok(a) => a,
                         Err(e) => {
+                            let msg = format!("Failed to configure agent: {e}");
                             let _ = app_for_status.emit(
                                 "acp://status",
                                 SessionStatus {
@@ -361,12 +386,12 @@ impl AcpSession {
                                     cwd: Some(cwd_for_task.display().to_string()),
                                     session_id: None,
                                     busy: false,
-                                    error: Some(format!("Failed to configure agent: {e}")),
+                                    error: Some(msg.clone()),
                                     load_session_supported: None,
                                 },
                             );
-                            // Session slot is installed after spawn returns; clear if present.
                             clear_session_slot(&app_for_status);
+                            signal_connect_ready(&ready_for_thread, Err(msg));
                             return;
                         }
                     };
@@ -443,13 +468,21 @@ impl AcpSession {
                             },
                             agent_client_protocol::on_receive_request!(),
                         )
-                        .connect_with(agent, |connection: ConnectionTo<Agent>| {
+                        .connect_with(agent, {
+                            let ready_for_connect = ready_for_thread.clone();
+                            let session_id_for_task = session_id_for_task.clone();
+                            let app_for_inner = app_for_status.clone();
+                            let cwd_for_inner = cwd_for_task.clone();
+                            let resume_for_task = resume_for_task.clone();
+                            let pending_for_cmds = pending_for_cmds.clone();
+                            move |connection: ConnectionTo<Agent>| {
                             let mut cmd_rx = cmd_rx;
-                            let session_id = session_id_for_task.clone();
-                            let app = app_for_status.clone();
-                            let cwd = cwd_for_task.clone();
-                            let resume_id = resume_for_task.clone();
-                            let pending_perms = pending_for_cmds.clone();
+                            let session_id = session_id_for_task;
+                            let app = app_for_inner;
+                            let cwd = cwd_for_inner;
+                            let resume_id = resume_for_task;
+                            let pending_perms = pending_for_cmds;
+                            let ready_for_thread = ready_for_connect;
                             async move {
                                 let init = connection
                                     .send_request(InitializeRequest::new(ProtocolVersion::V1))
@@ -459,13 +492,15 @@ impl AcpSession {
                                 let load_session_supported =
                                     init.agent_capabilities.load_session;
 
+                                // Handshake still in progress — keep busy so UI
+                                // Connect/Resume stay disabled until session id is set.
                                 let _ = app.emit(
                                     "acp://status",
                                     SessionStatus {
                                         connected: true,
                                         cwd: Some(cwd.display().to_string()),
                                         session_id: None,
-                                        busy: false,
+                                        busy: true,
                                         error: None,
                                         load_session_supported: Some(load_session_supported),
                                     },
@@ -576,6 +611,8 @@ impl AcpSession {
                                         load_session_supported: Some(load_session_supported),
                                     },
                                 );
+                                // Unblock connect_grok only once the session is usable.
+                                signal_connect_ready(&ready_for_thread, Ok(()));
 
                                 while let Some(cmd) = cmd_rx.recv().await {
                                     match cmd {
@@ -638,10 +675,12 @@ impl AcpSession {
 
                                 Ok(())
                             }
+                            }
                         })
                         .await;
 
                     if let Err(e) = connect_result {
+                        let msg = format!("{e}");
                         let _ = app_for_status.emit(
                             "acp://status",
                             SessionStatus {
@@ -649,10 +688,12 @@ impl AcpSession {
                                 cwd: Some(cwd_for_task.display().to_string()),
                                 session_id: None,
                                 busy: false,
-                                error: Some(format!("{e}")),
+                                error: Some(msg.clone()),
                                 load_session_supported: None,
                             },
                         );
+                        // Handshake never completed — unblock await with Err.
+                        signal_connect_ready(&ready_for_thread, Err(msg));
                     } else {
                         let _ = app_for_status.emit(
                             "acp://status",
@@ -665,26 +706,29 @@ impl AcpSession {
                                 load_session_supported: None,
                             },
                         );
+                        // Disconnect / agent exit after a successful ready: no-op.
+                        signal_connect_ready(
+                            &ready_for_thread,
+                            Err("ACP session ended before ready".into()),
+                        );
                     }
                     clear_session_slot(&app_for_status);
                 });
             })
-            .map_err(|e| format!("failed to spawn acp thread: {e}"))?;
+            .map_err(|e| {
+                // Spawn failed — slot still holds the unused session handle.
+                clear_session_slot(&app);
+                format!("failed to spawn acp thread: {e}")
+            })?;
 
-        let session = AcpSession {
-            cmd_tx,
-            pending_permission,
-            next_perm_id,
-            cwd,
-            session_id,
-        };
-
-        let mut guard = state
-            .inner
-            .lock()
-            .map_err(|_| "session state lock poisoned".to_string())?;
-        guard.session = Some(session);
-        Ok(())
+        // Wait until initialize + session/new|load finishes (or fails).
+        match ready_rx.await {
+            Ok(result) => result,
+            Err(_) => {
+                clear_session_slot(&app);
+                Err("ACP thread exited before connect ready".into())
+            }
+        }
     }
 
     pub async fn prompt(&self, text: String) -> Result<String, String> {
@@ -750,6 +794,18 @@ impl AppState {
         Self {
             inner: StdMutex::new(AppStateInner { session: None }),
         }
+    }
+}
+
+
+/// Shared slot so both the connect_with closure and the outer failure
+/// paths can fire the connect-ready oneshot at most once.
+type ConnectReadySlot = Arc<StdMutex<Option<oneshot::Sender<Result<(), String>>>>>;
+
+fn signal_connect_ready(ready: &ConnectReadySlot, result: Result<(), String>) {
+    let mut guard = ready.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(tx) = guard.take() {
+        let _ = tx.send(result);
     }
 }
 
@@ -951,5 +1007,25 @@ mod pending_permission_tests {
             Ok(_) => panic!("expected no pending after cancel"),
         };
         assert!(err.contains("no pending"));
+    }
+
+    #[tokio::test]
+    async fn signal_connect_ready_fires_once() {
+        let (tx, rx) = oneshot::channel::<Result<(), String>>();
+        let ready: ConnectReadySlot = Arc::new(StdMutex::new(Some(tx)));
+        signal_connect_ready(&ready, Ok(()));
+        assert!(ready.lock().unwrap().is_none());
+        assert!(rx.await.expect("oneshot").is_ok());
+        // Second signal is a no-op (channel already taken).
+        signal_connect_ready(&ready, Err("late".into()));
+    }
+
+    #[tokio::test]
+    async fn signal_connect_ready_forwards_err() {
+        let (tx, rx) = oneshot::channel::<Result<(), String>>();
+        let ready: ConnectReadySlot = Arc::new(StdMutex::new(Some(tx)));
+        signal_connect_ready(&ready, Err("boom".into()));
+        let err = rx.await.expect("oneshot").expect_err("err");
+        assert!(err.contains("boom"));
     }
 }

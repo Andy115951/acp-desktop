@@ -7,6 +7,7 @@ import {
   isNoPendingPermissionError,
   isStalePermissionError,
 } from "../lib/permissionHotkey";
+import { isSessionLoadFailedError } from "../lib/sessionPrefs";
 
 export type StreamLine = {
   id: string;
@@ -54,6 +55,19 @@ async function saveSessionPrefs(cwd: string, sessionId: string): Promise<void> {
     await store.save();
   } catch {
     // Prefs are best-effort; never block the session on store failure.
+  }
+}
+
+async function clearSavedSessionId(cwd: string): Promise<void> {
+  try {
+    const store = await getPrefsStore();
+    const map = (await store.get<SessionPrefs>(PREFS_KEY)) ?? {};
+    if (!(cwd in map)) return;
+    delete map[cwd];
+    await store.set(PREFS_KEY, map);
+    await store.save();
+  } catch {
+    // Prefs are best-effort.
   }
 }
 
@@ -111,6 +125,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const cwd = get().cwd;
     if (!cwd) {
       set({ error: "Pick a workspace folder first." });
+      return;
+    }
+    // Host now awaits handshake, but still guard double-clicks while busy /
+    // already connected so we never stack a second connect_grok.
+    if (get().busy || get().connected) {
       return;
     }
     const resumeSessionId =
@@ -301,6 +320,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           });
         }
 
+        // Corrupt / unknown resume id: drop the stale prefs entry so Resume
+        // does not keep failing; New session remains available.
+        const loadFailed =
+          !!ev.payload.error && isSessionLoadFailedError(ev.payload.error);
+        if (loadFailed && cwd) {
+          void clearSavedSessionId(cwd).then(() => {
+            set({ savedSessionId: null });
+          });
+        }
+
         set({
           connected: ev.payload.connected,
           cwd: cwd ?? get().cwd,
@@ -308,6 +337,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           busy: ev.payload.busy,
           error: ev.payload.error ?? null,
           loadSessionSupported,
+          ...(loadFailed ? { savedSessionId: null } : {}),
         });
       }),
     );

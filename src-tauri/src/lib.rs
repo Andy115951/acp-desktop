@@ -84,7 +84,8 @@ async fn connect_grok(
     }
     // Validate override command early so UI gets a clear error.
     let _ = resolve_agent_command()?;
-    AcpSession::start(app, path, resume_session_id)
+    // Awaits initialize + session/new|load so Connect stays busy until ready.
+    AcpSession::start(app, path, resume_session_id).await
 }
 
 #[tauri::command]
