@@ -239,6 +239,22 @@ fn take_matching_permission(
     }
 }
 
+/// Install a new Ask oneshot, cancelling any previous pending Ask first.
+///
+/// Blind overwrite would drop the old oneshot (agent sees Cancelled via
+/// rx Err) but is easy to miss in reviews; explicit Cancelled keeps the
+/// contract obvious and covers a second `session/request_permission`
+/// while the UI still shows the first card.
+fn install_pending_permission(
+    slot: &mut Option<(u64, PendingPermission)>,
+    request_id: u64,
+    reply: oneshot::Sender<RequestPermissionResponse>,
+) -> bool {
+    let replaced = cancel_taken_permission(slot.take());
+    *slot = Some((request_id, PendingPermission { reply }));
+    replaced
+}
+
 /// Take a pending permission oneshot (if any) and reply with `Cancelled`.
 ///
 /// Used when the UI Cancels a prompt while Ask is open: the host command loop
@@ -446,7 +462,7 @@ impl AcpSession {
                                     };
                                     {
                                         let mut slot = pending.lock().await;
-                                        *slot = Some((request_id, PendingPermission { reply: tx }));
+                                        let _ = install_pending_permission(&mut slot, request_id, tx);
                                     }
                                     let _ = app.emit(
                                         "acp://permission",
@@ -1028,4 +1044,34 @@ mod pending_permission_tests {
         let err = rx.await.expect("oneshot").expect_err("err");
         assert!(err.contains("boom"));
     }
+
+    #[test]
+    fn install_pending_replaces_and_cancels_previous() {
+        let (tx1, mut rx1) = oneshot::channel();
+        let mut slot = Some((1u64, PendingPermission { reply: tx1 }));
+        let (tx2, mut rx2) = oneshot::channel();
+        assert!(install_pending_permission(&mut slot, 2, tx2));
+        assert_eq!(slot.as_ref().map(|(id, _)| *id), Some(2));
+        let resp = rx1.try_recv().expect("previous Ask cancelled");
+        assert!(matches!(
+            resp.outcome,
+            RequestPermissionOutcome::Cancelled
+        ));
+        assert!(rx2.try_recv().is_err(), "new Ask still pending");
+        let pending = take_matching_permission(&mut slot, 2).expect("match");
+        let _ = pending.reply.send(RequestPermissionResponse::new(
+            RequestPermissionOutcome::Cancelled,
+        ));
+        assert!(rx2.try_recv().is_ok());
+    }
+
+    #[test]
+    fn install_pending_into_empty_slot() {
+        let mut slot: Option<(u64, PendingPermission)> = None;
+        let (tx, mut rx) = oneshot::channel();
+        assert!(!install_pending_permission(&mut slot, 5, tx));
+        assert_eq!(slot.as_ref().map(|(id, _)| *id), Some(5));
+        assert!(rx.try_recv().is_err());
+    }
 }
+

@@ -13,13 +13,14 @@ export type SessionUiGates = {
   canConnectAgent: boolean;
 };
 
-/** Resume button: saved id + cwd + agent, not connected, loadSession not known-false. */
+/** Resume button: saved id + cwd + agent, idle, loadSession not known-false. */
 export function canResumeSession(g: SessionUiGates): boolean {
   return (
     !!g.savedSessionId &&
     g.loadSessionSupported !== false &&
     !!g.cwd &&
     !g.connected &&
+    !g.busy &&
     g.canConnectAgent
   );
 }

@@ -42,6 +42,10 @@ describe("canResumeSession", () => {
     expect(canResumeSession({ ...base, canConnectAgent: false })).toBe(false);
     expect(canResumeSession({ ...base, connected: true })).toBe(false);
   });
+
+  it("blocks while busy (parity with Connect; no Disconnect→Resume race)", () => {
+    expect(canResumeSession({ ...base, busy: true })).toBe(false);
+  });
 });
 
 describe("canConnectNewSession", () => {

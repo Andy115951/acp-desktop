@@ -6,6 +6,7 @@ import { Store } from "@tauri-apps/plugin-store";
 import {
   isNoPendingPermissionError,
   isStalePermissionError,
+  shouldDismissAskOnDisconnect,
 } from "../lib/permissionHotkey";
 import { isSessionLoadFailedError } from "../lib/sessionPrefs";
 
@@ -337,6 +338,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           busy: ev.payload.busy,
           error: ev.payload.error ?? null,
           loadSessionSupported,
+          // Agent exit / Disconnect via status: drop stale Ask so Allow cannot
+          // hit a torn-down oneshot after the modal was left open.
+          ...(shouldDismissAskOnDisconnect(ev.payload.connected)
+            ? { permission: null }
+            : {}),
           ...(loadFailed ? { savedSessionId: null } : {}),
         });
       }),

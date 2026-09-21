@@ -4,6 +4,7 @@ import {
   isQuietPermissionHostError,
   isStalePermissionError,
   permissionHotkeyAction,
+  shouldDismissAskOnDisconnect,
 } from "./permissionHotkey";
 
 const OPTIONS = [
@@ -89,3 +90,11 @@ describe("permission host error helpers", () => {
     );
   });
 });
+
+describe("shouldDismissAskOnDisconnect", () => {
+  it("clears Ask when status reports disconnected", () => {
+    expect(shouldDismissAskOnDisconnect(false)).toBe(true);
+    expect(shouldDismissAskOnDisconnect(true)).toBe(false);
+  });
+});
+

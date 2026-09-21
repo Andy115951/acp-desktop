@@ -50,3 +50,9 @@ export function isQuietPermissionHostError(message: string): boolean {
     isNoPendingPermissionError(message) || isStalePermissionError(message)
   );
 }
+
+/** Drop open Ask when host reports disconnected (agent exit / Disconnect). */
+export function shouldDismissAskOnDisconnect(connected: boolean): boolean {
+  return !connected;
+}
+

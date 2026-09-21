@@ -226,11 +226,13 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => void connect("resume")}
-                    disabled={!canResume || busy}
+                    disabled={!canResume}
                     title={
                       loadSessionSupported === false
                         ? "Agent does not advertise loadSession"
-                        : `Resume session ${savedSessionId}`
+                        : busy
+                          ? "Busy…"
+                          : `Resume session ${savedSessionId}`
                     }
                     className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                   >
