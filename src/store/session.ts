@@ -125,8 +125,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       error: null,
       busy: true,
-      // Clear prior transcript on Resume, then show a local marker so empty
-      // replay is distinguishable from "events never arrived".
+      // Clear prior transcript on New or Resume so old turns never mix with
+      // a fresh session/new or session/load. Status marker distinguishes an
+      // empty connect from "events never arrived".
       lines:
         mode === "resume"
           ? [
@@ -136,7 +137,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
                 text: "Resuming session…",
               },
             ]
-          : get().lines,
+          : [
+              {
+                id: `new-${++lineCounter}`,
+                kind: "status",
+                text: "New session…",
+              },
+            ],
     });
     try {
       await invoke("connect_grok", {

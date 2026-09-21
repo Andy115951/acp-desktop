@@ -45,6 +45,18 @@ export default function App() {
     return () => cleanup?.();
   }, [bindEvents]);
 
+  useEffect(() => {
+    if (!permission) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        void respondPermission(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [permission, respondPermission]);
+
   const grok = agents.find((a) => a.id === "grok");
   const usingFake = !!override?.usingOverride;
   const canConnectAgent = !!grok?.available || usingFake;
