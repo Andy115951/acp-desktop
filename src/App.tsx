@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
 
@@ -48,26 +49,13 @@ export default function App() {
   useEffect(() => {
     if (!permission) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
+      const action = permissionHotkeyAction(e.key, permission.options);
+      if (!action) return;
+      e.preventDefault();
+      if (action.type === "cancel") {
         void respondPermission(null);
-        return;
-      }
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (key === "a" || e.key === "Enter") {
-        e.preventDefault();
-        const allow =
-          permission.options.find((o) => o.kind.startsWith("Allow")) ??
-          permission.options[0];
-        if (allow) void respondPermission(allow.id);
-        return;
-      }
-      if (key === "r") {
-        e.preventDefault();
-        const reject = permission.options.find((o) =>
-          o.kind.startsWith("Reject"),
-        );
-        if (reject) void respondPermission(reject.id);
+      } else {
+        void respondPermission(action.optionId);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -319,6 +307,9 @@ export default function App() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
+              // While Ask is open, window handler owns a/Enter/r/Esc — do not
+              // also Submit a new prompt from the draft field.
+              if (permission) return;
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void send();

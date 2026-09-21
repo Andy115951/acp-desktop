@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
+import { isNoPendingPermissionError } from "../lib/permissionHotkey";
 
 export type StreamLine = {
   id: string;
@@ -175,6 +176,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   send: async () => {
     const text = get().draft.trim();
     if (!text) return;
+    // Ask modal owns the turn; never queue a second prompt underneath it.
+    if (get().permission || !get().connected || get().busy) return;
     set({
       draft: "",
       busy: true,
@@ -222,7 +225,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
       set({ permission: null });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      const message = e instanceof Error ? e.message : String(e);
+      // Cancel / Disconnect already cleared the host oneshot — dismiss quietly.
+      if (isNoPendingPermissionError(message)) {
+        set({ permission: null });
+        return;
+      }
+      set({ error: message });
     }
   },
   bindEvents: async () => {

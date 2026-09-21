@@ -223,6 +223,22 @@ struct PendingPermission {
     reply: oneshot::Sender<RequestPermissionResponse>,
 }
 
+/// Take the pending Ask only when `request_id` matches.
+///
+/// On mismatch the slot is left untouched so a later correct reply (or Cancel)
+/// can still unblock `session/request_permission`. Taking-then-dropping on
+/// stale ids used to cancel the real Ask by dropping the oneshot.
+fn take_matching_permission(
+    slot: &mut Option<(u64, PendingPermission)>,
+    request_id: u64,
+) -> Result<PendingPermission, String> {
+    match slot.as_ref().map(|(id, _)| *id) {
+        None => Err("no pending permission request".into()),
+        Some(id) if id != request_id => Err("stale permission request id".into()),
+        Some(_) => Ok(slot.take().expect("checked Some").1),
+    }
+}
+
 /// Take a pending permission oneshot (if any) and reply with `Cancelled`.
 ///
 /// Used when the UI Cancels a prompt while Ask is open: the host command loop
@@ -704,14 +720,8 @@ impl AcpSession {
     ) -> Result<(), String> {
         let pending = {
             let mut slot = self.pending_permission.lock().await;
-            slot.take()
+            take_matching_permission(&mut slot, request_id)?
         };
-        let Some((id, pending)) = pending else {
-            return Err("no pending permission request".into());
-        };
-        if id != request_id {
-            return Err("stale permission request id".into());
-        }
         let response = match option_id {
             Some(oid) => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
                 SelectedPermissionOutcome::new(oid),
@@ -894,5 +904,35 @@ mod pending_permission_tests {
         ));
         // Idempotent when empty.
         assert!(!cancel_pending_permission(&slot).await);
+    }
+
+    #[test]
+    fn take_matching_leaves_slot_on_stale_id() {
+        let (tx, mut rx) = oneshot::channel();
+        let mut slot = Some((9u64, PendingPermission { reply: tx }));
+        let err = match take_matching_permission(&mut slot, 1) {
+            Err(e) => e,
+            Ok(_) => panic!("expected stale id error"),
+        };
+        assert!(err.contains("stale"));
+        assert!(slot.is_some(), "stale id must not take the pending Ask");
+        assert!(rx.try_recv().is_err(), "oneshot must still be pending");
+
+        let pending = take_matching_permission(&mut slot, 9).expect("match");
+        assert!(slot.is_none());
+        let _ = pending.reply.send(RequestPermissionResponse::new(
+            RequestPermissionOutcome::Cancelled,
+        ));
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn take_matching_errors_when_empty() {
+        let mut slot: Option<(u64, PendingPermission)> = None;
+        let err = match take_matching_permission(&mut slot, 1) {
+            Err(e) => e,
+            Ok(_) => panic!("expected empty slot error"),
+        };
+        assert!(err.contains("no pending"));
     }
 }

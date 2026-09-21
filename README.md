@@ -67,12 +67,13 @@ Grok may not emit `session/request_permission` for every prompt. For a determini
 cargo test -p fake-acp-agent
 cargo test -p acp-desktop
 npx tsc --noEmit
+npm test
 
 # One-command Tauri UI smoke (builds fake agent, sets ACP_DESKTOP_FAKE_AGENT=1)
 npm run tauri:fake
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the same `cargo test` + `tsc` checks on push/PR.
+GitHub Actions (`.github/workflows/ci.yml`) runs the same `cargo test` + `tsc` + `vitest` checks on push/PR.
 
 In the app, use the **Dev: fake ACP agent** toggle (same process-env override; not persisted). Then: Pick folder → Connect → Send any prompt → permission modal Allow/Reject (keys: **a**/**Enter** Allow, **r** Reject, **Esc** Cancel; toolbar Cancel also clears a pending Ask) → Disconnect → **Resume** (expect `fake-agent: resumed` replay; prompt still asks permission).
 

@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   test:
-    name: cargo test + tsc
+    name: cargo test + tsc + vitest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,3 +52,6 @@ jobs:
 
       - name: tsc --noEmit
         run: npx tsc --noEmit
+
+      - name: vitest (permission hotkeys)
+        run: npm test
