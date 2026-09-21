@@ -223,6 +223,30 @@ struct PendingPermission {
     reply: oneshot::Sender<RequestPermissionResponse>,
 }
 
+/// Take a pending permission oneshot (if any) and reply with `Cancelled`.
+///
+/// Used when the UI Cancels a prompt while Ask is open: the host command loop
+/// may be blocked inside `Prompt` awaiting the agent, so clearing the shared
+/// slot here is what actually unblocks `session/request_permission`.
+fn cancel_taken_permission(pending: Option<(u64, PendingPermission)>) -> bool {
+    match pending {
+        Some((_id, pending)) => {
+            let _ = pending.reply.send(RequestPermissionResponse::new(
+                RequestPermissionOutcome::Cancelled,
+            ));
+            true
+        }
+        None => false,
+    }
+}
+
+async fn cancel_pending_permission(
+    slot: &Mutex<Option<(u64, PendingPermission)>>,
+) -> bool {
+    let pending = { slot.lock().await.take() };
+    cancel_taken_permission(pending)
+}
+
 pub struct AcpSession {
     cmd_tx: mpsc::UnboundedSender<HostCommand>,
     pending_permission: Arc<Mutex<Option<(u64, PendingPermission)>>>,
@@ -274,6 +298,7 @@ impl AcpSession {
         let session_id: Arc<Mutex<Option<SessionId>>> = Arc::new(Mutex::new(None));
 
         let pending_for_handler = pending_permission.clone();
+        let pending_for_cmds = pending_permission.clone();
         let next_perm_for_handler = next_perm_id.clone();
         let app_for_handler = app.clone();
         let app_for_notif = app.clone();
@@ -408,6 +433,7 @@ impl AcpSession {
                             let app = app_for_status.clone();
                             let cwd = cwd_for_task.clone();
                             let resume_id = resume_for_task.clone();
+                            let pending_perms = pending_for_cmds.clone();
                             async move {
                                 let init = connection
                                     .send_request(InitializeRequest::new(ProtocolVersion::V1))
@@ -580,11 +606,17 @@ impl AcpSession {
                                             );
                                         }
                                         HostCommand::Cancel => {
+                                            // Belt-and-suspenders: AcpSession::cancel already
+                                            // clears the oneshot; no-op if already taken.
+                                            let _ = cancel_pending_permission(&pending_perms).await;
                                             let _ = connection.send_notification(
                                                 CancelNotification::new(sid.clone()),
                                             );
                                         }
-                                        HostCommand::Stop => break,
+                                        HostCommand::Stop => {
+                                            let _ = cancel_pending_permission(&pending_perms).await;
+                                            break;
+                                        }
                                     }
                                 }
 
@@ -650,13 +682,18 @@ impl AcpSession {
             .map_err(|_| "session dropped before reply".to_string())?
     }
 
-    pub fn cancel(&self) -> Result<(), String> {
+    pub async fn cancel(&self) -> Result<(), String> {
+        // Must clear pending Ask here: the cmd loop is often blocked inside
+        // Prompt awaiting the agent, so HostCommand::Cancel alone cannot
+        // unblock session/request_permission.
+        let _ = cancel_pending_permission(&self.pending_permission).await;
         self.cmd_tx
             .send(HostCommand::Cancel)
             .map_err(|_| "session channel closed".to_string())
     }
 
-    pub fn stop(&self) {
+    pub async fn stop(&self) {
+        let _ = cancel_pending_permission(&self.pending_permission).await;
         let _ = self.cmd_tx.send(HostCommand::Stop);
     }
 
@@ -816,5 +853,46 @@ fn _kind_name(kind: &PermissionOptionKind) -> &'static str {
         PermissionOptionKind::RejectOnce => "RejectOnce",
         PermissionOptionKind::RejectAlways => "RejectAlways",
         _ => "Other",
+    }
+}
+
+#[cfg(test)]
+mod pending_permission_tests {
+    use super::*;
+
+    #[test]
+    fn cancel_taken_permission_sends_cancelled() {
+        assert!(!cancel_taken_permission(None));
+
+        let (tx, mut rx) = oneshot::channel();
+        assert!(cancel_taken_permission(Some((
+            7,
+            PendingPermission { reply: tx }
+        ))));
+
+        let resp = rx.try_recv().expect("oneshot should already be ready");
+        assert!(matches!(
+            resp.outcome,
+            RequestPermissionOutcome::Cancelled
+        ));
+    }
+
+    #[tokio::test]
+    async fn cancel_pending_permission_clears_slot() {
+        let slot: Mutex<Option<(u64, PendingPermission)>> = Mutex::new(None);
+        assert!(!cancel_pending_permission(&slot).await);
+
+        let (tx, rx) = oneshot::channel();
+        *slot.lock().await = Some((3, PendingPermission { reply: tx }));
+        assert!(cancel_pending_permission(&slot).await);
+        assert!(slot.lock().await.is_none());
+
+        let resp = rx.await.expect("oneshot");
+        assert!(matches!(
+            resp.outcome,
+            RequestPermissionOutcome::Cancelled
+        ));
+        // Idempotent when empty.
+        assert!(!cancel_pending_permission(&slot).await);
     }
 }

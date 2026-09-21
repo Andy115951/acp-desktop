@@ -201,6 +201,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
   cancel: async () => {
+    // Host cancel_prompt clears the pending Ask oneshot. Do not also call
+    // respond_permission here — that would race and surface "no pending".
+    if (get().permission) {
+      set({ permission: null });
+    }
     try {
       await invoke("cancel_prompt");
     } catch (e) {

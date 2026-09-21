@@ -90,12 +90,16 @@ async fn connect_grok(
 #[tauri::command]
 async fn disconnect_grok(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let mut guard = state
-        .inner
-        .lock()
-        .map_err(|_| "session state lock poisoned".to_string())?;
-    if let Some(session) = guard.session.take() {
-        session.stop();
+    let session = {
+        let mut guard = state
+            .inner
+            .lock()
+            .map_err(|_| "session state lock poisoned".to_string())?;
+        guard.session.take()
+    };
+    if let Some(session) = session {
+        // Clears any pending Ask oneshot before tearing down the ACP loop.
+        session.stop().await;
     }
     Ok(())
 }
@@ -124,12 +128,18 @@ async fn send_prompt(app: tauri::AppHandle, text: String) -> Result<String, Stri
 #[tauri::command]
 async fn cancel_prompt(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let guard = state.inner.lock().map_err(|_| "session state lock poisoned".to_string())?;
-    let session = guard
-        .session
-        .as_ref()
-        .ok_or_else(|| "not connected".to_string())?;
-    session.cancel()
+    let session = {
+        let guard = state
+            .inner
+            .lock()
+            .map_err(|_| "session state lock poisoned".to_string())?;
+        guard
+            .session
+            .as_ref()
+            .ok_or_else(|| "not connected".to_string())?
+            .clone()
+    };
+    session.cancel().await
 }
 
 #[tauri::command]

@@ -51,6 +51,23 @@ export default function App() {
       if (e.key === "Escape") {
         e.preventDefault();
         void respondPermission(null);
+        return;
+      }
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (key === "a" || e.key === "Enter") {
+        e.preventDefault();
+        const allow =
+          permission.options.find((o) => o.kind.startsWith("Allow")) ??
+          permission.options[0];
+        if (allow) void respondPermission(allow.id);
+        return;
+      }
+      if (key === "r") {
+        e.preventDefault();
+        const reject = permission.options.find((o) =>
+          o.kind.startsWith("Reject"),
+        );
+        if (reject) void respondPermission(reject.id);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -362,6 +379,12 @@ export default function App() {
                 Cancel
               </button>
             </div>
+            <p className="text-[10px] text-slate-500 pt-1">
+              Keys:{" "}
+              <kbd className="text-slate-400">a</kbd>/<kbd className="text-slate-400">Enter</kbd>{" "}
+              Allow · <kbd className="text-slate-400">r</kbd> Reject ·{" "}
+              <kbd className="text-slate-400">Esc</kbd> Cancel
+            </p>
           </div>
         </div>
       ) : null}

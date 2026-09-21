@@ -74,7 +74,7 @@ npm run tauri:fake
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the same `cargo test` + `tsc` checks on push/PR.
 
-In the app, use the **Dev: fake ACP agent** toggle (same process-env override; not persisted). Then: Pick folder → Connect → Send any prompt → permission modal Allow/Reject → Disconnect → **Resume** (expect `fake-agent: resumed` replay; prompt still asks permission).
+In the app, use the **Dev: fake ACP agent** toggle (same process-env override; not persisted). Then: Pick folder → Connect → Send any prompt → permission modal Allow/Reject (keys: **a**/**Enter** Allow, **r** Reject, **Esc** Cancel; toolbar Cancel also clears a pending Ask) → Disconnect → **Resume** (expect `fake-agent: resumed` replay; prompt still asks permission).
 
 Env alternatives:
 
