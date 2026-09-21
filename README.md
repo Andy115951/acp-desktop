@@ -43,7 +43,9 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 ## Status
 
-M1 scaffold in place: Tauri 2 + React (Vite/TS) + Tailwind + Zustand, with a `detect_agents` command that probes `PATH` for `grok` (and stub entries for later agents). No ACP handshake yet.
+M1 is on `main`. **M2 (Grok ACP path)** is in progress on [`feat/m2-grok-acp`](https://github.com/Andy115951/acp-desktop/pull/8): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences store only cwd→sessionId (no chat history).
+
+Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). Full in-app UI E2E (especially permission allow/deny cards) still needed before closing [#3](https://github.com/Andy115951/acp-desktop/issues/3).
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
