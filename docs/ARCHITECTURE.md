@@ -66,6 +66,12 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 | First agent | Grok Build |
 | Permissions | Ask (no YOLO default) |
 
+## Testing / fake agent
+
+- In-repo crate `tools/fake-acp-agent`: ACP v1 stdio agent that **always** `session/request_permission`s on prompt (allow → stream text + EndTurn; reject → EndTurn with no side-effect text).
+- Host override: `ACP_DESKTOP_AGENT_CMD` (full command) or `ACP_DESKTOP_FAKE_AGENT=1` (runs `fake-acp-agent` from PATH). Default remains `grok agent stdio`.
+- Automated: `cargo test -p fake-acp-agent` (allow + reject). Does not replace Mac UI E2E for permission cards.
+
 ## Deferred
 
 - Second agent: Codex vs Claude Code

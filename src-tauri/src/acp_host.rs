@@ -12,6 +12,7 @@ use agent_client_protocol::{
     AcpAgent, Agent, Client, ConnectionTo, SessionMessage,
 };
 use serde::Serialize;
+use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,6 +53,39 @@ pub struct SessionStatus {
     pub error: Option<String>,
     /// Whether the agent advertised `agentCapabilities.loadSession` after initialize.
     pub load_session_supported: Option<bool>,
+}
+
+
+/// Resolve the ACP agent subprocess command.
+///
+/// Priority:
+/// 1. `ACP_DESKTOP_AGENT_CMD` — whitespace-split command + args (for tests / custom agents)
+/// 2. `ACP_DESKTOP_FAKE_AGENT=1` — spawn in-repo `fake-acp-agent` (must be on PATH or
+///    set `ACP_DESKTOP_AGENT_CMD` to its absolute path)
+/// 3. Default: `grok agent stdio`
+pub fn resolve_agent_command() -> Result<Vec<String>, String> {
+    if let Ok(cmd) = env::var("ACP_DESKTOP_AGENT_CMD") {
+        let parts: Vec<String> = cmd.split_whitespace().map(|s| s.to_string()).collect();
+        if parts.is_empty() {
+            return Err("ACP_DESKTOP_AGENT_CMD is empty".into());
+        }
+        return Ok(parts);
+    }
+
+    let fake = env::var("ACP_DESKTOP_FAKE_AGENT").unwrap_or_default();
+    if fake == "1" || fake.eq_ignore_ascii_case("true") {
+        return Ok(vec!["fake-acp-agent".into()]);
+    }
+
+    Ok(vec!["grok".into(), "agent".into(), "stdio".into()])
+}
+
+pub fn using_override_agent() -> bool {
+    env::var("ACP_DESKTOP_AGENT_CMD").is_ok()
+        || matches!(
+            env::var("ACP_DESKTOP_FAKE_AGENT").ok().as_deref(),
+            Some("1") | Some("true") | Some("TRUE")
+        )
 }
 
 enum HostCommand {
@@ -113,7 +147,7 @@ impl AcpSession {
 
         // Spawn the ACP connection on a dedicated OS thread with its own runtime.
         std::thread::Builder::new()
-            .name("acp-grok".into())
+            .name("acp-agent".into())
             .spawn(move || {
                 let rt = tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
@@ -121,7 +155,25 @@ impl AcpSession {
                     .build()
                     .expect("tokio runtime");
                 let _ = rt.block_on(async move {
-                    let agent = match AcpAgent::from_args(["grok", "agent", "stdio"]) {
+                    let agent_args = match resolve_agent_command() {
+                        Ok(args) => args,
+                        Err(e) => {
+                            let _ = app_for_status.emit(
+                                "acp://status",
+                                SessionStatus {
+                                    connected: false,
+                                    cwd: Some(cwd_for_task.display().to_string()),
+                                    session_id: None,
+                                    busy: false,
+                                    error: Some(e),
+                                    load_session_supported: None,
+                                },
+                            );
+                            clear_session_slot(&app_for_status);
+                            return;
+                        }
+                    };
+                    let agent = match AcpAgent::from_args(agent_args) {
                         Ok(a) => a,
                         Err(e) => {
                             let _ = app_for_status.emit(
@@ -131,7 +183,7 @@ impl AcpSession {
                                     cwd: Some(cwd_for_task.display().to_string()),
                                     session_id: None,
                                     busy: false,
-                                    error: Some(format!("Failed to configure grok: {e}")),
+                                    error: Some(format!("Failed to configure agent: {e}")),
                                     load_session_supported: None,
                                 },
                             );

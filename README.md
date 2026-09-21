@@ -45,7 +45,7 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 M1 is on `main`. **M2 (Grok ACP path)** is in progress on [`feat/m2-grok-acp`](https://github.com/Andy115951/acp-desktop/pull/8): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences store only cwd→sessionId (no chat history).
 
-Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). Full in-app UI E2E (especially permission allow/deny cards) still needed before closing [#3](https://github.com/Andy115951/acp-desktop/issues/3).
+Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` covers `session/request_permission` allow/deny without Grok (real Grok often skips surfacing permissions). Full in-app UI E2E (permission cards in the Tauri window) is still the remaining gate before closing [#3](https://github.com/Andy115951/acp-desktop/issues/3).
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
@@ -57,6 +57,23 @@ Prerequisites: [Node.js](https://nodejs.org/), [Rust](https://rustup.rs/), and O
 npm install
 npm run tauri dev
 ```
+
+### Fake ACP agent (permission smoke)
+
+Grok may not emit `session/request_permission` for every prompt. For a deterministic allow/deny path:
+
+```bash
+# From repo root (Cargo workspace)
+cargo test -p fake-acp-agent
+cargo test -p acp-desktop
+
+# Optional: point the desktop host at the fake agent instead of Grok
+cargo build -p fake-acp-agent
+ACP_DESKTOP_AGENT_CMD="$(pwd)/target/debug/fake-acp-agent" npm run tauri dev
+# or: ACP_DESKTOP_FAKE_AGENT=1  (requires `fake-acp-agent` on PATH)
+```
+
+Default for users remains `grok agent stdio`. Overrides are env-only and not persisted.
 
 ## Roadmap
 

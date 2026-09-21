@@ -1,6 +1,6 @@
 mod acp_host;
 
-use acp_host::{AcpSession, AppState, SessionStatus};
+use acp_host::{resolve_agent_command, using_override_agent, AcpSession, AppState, SessionStatus};
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
@@ -76,9 +76,11 @@ async fn connect_grok(
     if !path.is_dir() {
         return Err(format!("Not a directory: {cwd}"));
     }
-    if !binary_on_path("grok") {
-        return Err("`grok` not found on PATH".into());
+    if !using_override_agent() && !binary_on_path("grok") {
+        return Err("`grok` not found on PATH (or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD)".into());
     }
+    // Validate override command early so UI gets a clear error.
+    let _ = resolve_agent_command()?;
     AcpSession::start(app, path, resume_session_id)
 }
 
@@ -180,10 +182,49 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialize env-mutating tests (cargo may run test threads in parallel).
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn detect_agents_includes_grok() {
         let agents = detect_agents();
         assert!(agents.iter().any(|a| a.id == "grok" && a.binary == "grok"));
+    }
+
+    #[test]
+    fn resolve_agent_command_defaults_to_grok() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        std::env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+        assert_eq!(
+            resolve_agent_command().unwrap(),
+            vec!["grok", "agent", "stdio"]
+        );
+        assert!(!using_override_agent());
+    }
+
+    #[test]
+    fn resolve_agent_command_fake_flag() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        std::env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
+        assert_eq!(resolve_agent_command().unwrap(), vec!["fake-acp-agent"]);
+        assert!(using_override_agent());
+        std::env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+    }
+
+    #[test]
+    fn resolve_agent_command_explicit_cmd() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::set_var("ACP_DESKTOP_AGENT_CMD", "/tmp/fake-acp-agent");
+        std::env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
+        assert_eq!(
+            resolve_agent_command().unwrap(),
+            vec!["/tmp/fake-acp-agent"]
+        );
+        std::env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        std::env::remove_var("ACP_DESKTOP_FAKE_AGENT");
     }
 }
