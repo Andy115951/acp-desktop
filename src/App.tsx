@@ -10,6 +10,8 @@ export default function App() {
     busy,
     error,
     sessionId,
+    savedSessionId,
+    loadSessionSupported,
     lines,
     permission,
     draft,
@@ -37,6 +39,8 @@ export default function App() {
   }, [bindEvents]);
 
   const grok = agents.find((a) => a.id === "grok");
+  const canResume =
+    !!savedSessionId && loadSessionSupported !== false && !!cwd && !connected;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-8">
@@ -48,8 +52,10 @@ export default function App() {
           acp-desktop
         </h1>
         <p className="text-sm text-slate-400">
-          M2: pick a folder, connect Grok via <code className="text-slate-300">grok agent stdio</code>,
-          stream a turn, approve tools with Ask.
+          M2: pick a folder, connect Grok via{" "}
+          <code className="text-slate-300">grok agent stdio</code>, stream a
+          turn, approve tools with Ask, resume via{" "}
+          <code className="text-slate-300">session/load</code>.
         </p>
       </header>
 
@@ -124,14 +130,42 @@ export default function App() {
             Pick folder
           </button>
           {!connected ? (
-            <button
-              type="button"
-              onClick={() => void connect()}
-              disabled={!cwd || !grok?.available || busy}
-              className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-            >
-              Connect
-            </button>
+            <>
+              {savedSessionId ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void connect("resume")}
+                    disabled={!canResume || !grok?.available || busy}
+                    title={
+                      loadSessionSupported === false
+                        ? "Agent does not advertise loadSession"
+                        : `Resume session ${savedSessionId}`
+                    }
+                    className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                  >
+                    Resume
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void connect("new")}
+                    disabled={!cwd || !grok?.available || busy}
+                    className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                  >
+                    New session
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void connect("new")}
+                  disabled={!cwd || !grok?.available || busy}
+                  className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                >
+                  Connect
+                </button>
+              )}
+            </>
           ) : (
             <button
               type="button"
@@ -151,8 +185,22 @@ export default function App() {
         </div>
         <p className="text-xs text-slate-500 break-all">
           cwd: {cwd ?? "—"} {sessionId ? `· session ${sessionId}` : ""}{" "}
+          {savedSessionId && !sessionId
+            ? `· saved ${savedSessionId}`
+            : ""}{" "}
           {connected ? "· connected" : "· idle"}
+          {loadSessionSupported === false
+            ? " · loadSession unsupported"
+            : loadSessionSupported === true
+              ? " · loadSession ok"
+              : ""}
         </p>
+        {loadSessionSupported === false ? (
+          <p className="rounded-md border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
+            Resume disabled: agent did not advertise{" "}
+            <code>loadSession</code>. Use New session.
+          </p>
+        ) : null}
         {error ? (
           <p className="rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
             {error}

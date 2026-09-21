@@ -2,15 +2,19 @@
 
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
-    CancelNotification, ContentBlock, InitializeRequest, NewSessionRequest,
+    CancelNotification, ContentBlock, InitializeRequest, LoadSessionRequest, NewSessionRequest,
     PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SelectedPermissionOutcome, SessionId, SessionNotification,
     SessionUpdate, TextContent,
 };
-use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo};
+use agent_client_protocol::util::MatchDispatch;
+use agent_client_protocol::{
+    AcpAgent, Agent, Client, ConnectionTo, SessionMessage,
+};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -46,6 +50,8 @@ pub struct SessionStatus {
     pub session_id: Option<String>,
     pub busy: bool,
     pub error: Option<String>,
+    /// Whether the agent advertised `agentCapabilities.loadSession` after initialize.
+    pub load_session_supported: Option<bool>,
 }
 
 enum HostCommand {
@@ -72,7 +78,16 @@ pub struct AcpSession {
 }
 
 impl AcpSession {
-    pub fn start(app: AppHandle, cwd: PathBuf) -> Result<(), String> {
+    /// Start a Grok ACP session.
+    ///
+    /// When `resume_session_id` is `Some`, uses `ConnectionTo::load_session` /
+    /// `session/load` after initialize (if the agent advertises `loadSession`).
+    /// Otherwise creates a new session via `session/new`.
+    pub fn start(
+        app: AppHandle,
+        cwd: PathBuf,
+        resume_session_id: Option<String>,
+    ) -> Result<(), String> {
         let state = app.state::<AppState>();
         {
             let guard = state.inner.blocking_lock();
@@ -94,6 +109,7 @@ impl AcpSession {
         let cwd_for_task = cwd.clone();
         let session_id_for_task = session_id.clone();
         let app_for_status = app.clone();
+        let resume_for_task = resume_session_id;
 
         // Spawn the ACP connection on a dedicated OS thread with its own runtime.
         std::thread::Builder::new()
@@ -116,8 +132,11 @@ impl AcpSession {
                                     session_id: None,
                                     busy: false,
                                     error: Some(format!("Failed to configure grok: {e}")),
+                                    load_session_supported: None,
                                 },
                             );
+                            // Session slot is installed after spawn returns; clear if present.
+                            clear_session_slot(&app_for_status);
                             return;
                         }
                     };
@@ -199,11 +218,15 @@ impl AcpSession {
                             let session_id = session_id_for_task.clone();
                             let app = app_for_status.clone();
                             let cwd = cwd_for_task.clone();
+                            let resume_id = resume_for_task.clone();
                             async move {
-                                let _init = connection
+                                let init = connection
                                     .send_request(InitializeRequest::new(ProtocolVersion::V1))
                                     .block_task()
                                     .await?;
+
+                                let load_session_supported =
+                                    init.agent_capabilities.load_session;
 
                                 let _ = app.emit(
                                     "acp://status",
@@ -213,14 +236,88 @@ impl AcpSession {
                                         session_id: None,
                                         busy: false,
                                         error: None,
+                                        load_session_supported: Some(load_session_supported),
                                     },
                                 );
-                                                                let new_session = connection
-                                    .send_request(NewSessionRequest::new(cwd.clone()))
-                                    .block_task()
-                                    .await?;
 
-                                let sid = new_session.session_id.clone();
+                                let sid = if let Some(saved_id) = resume_id {
+                                    if !load_session_supported {
+                                        let msg = "Agent does not advertise loadSession; Resume is unavailable. Use New session.";
+                                        let _ = app.emit(
+                                            "acp://status",
+                                            SessionStatus {
+                                                connected: false,
+                                                cwd: Some(cwd.display().to_string()),
+                                                session_id: None,
+                                                busy: false,
+                                                error: Some(msg.into()),
+                                                load_session_supported: Some(false),
+                                            },
+                                        );
+                                        return Err(
+                                            agent_client_protocol::Error::internal_error()
+                                                .data(msg),
+                                        );
+                                    }
+
+                                    let _ = app.emit(
+                                        "acp://status",
+                                        SessionStatus {
+                                            connected: true,
+                                            cwd: Some(cwd.display().to_string()),
+                                            session_id: Some(saved_id.clone()),
+                                            busy: true,
+                                            error: None,
+                                            load_session_supported: Some(true),
+                                        },
+                                    );
+
+                                    // Prefer 2.2.x helpers so pre-response replay is routed.
+                                    let restored = match connection
+                                        .load_session_from(LoadSessionRequest::new(
+                                            SessionId::new(saved_id.as_str()),
+                                            cwd.clone(),
+                                        ))
+                                        .block_task()
+                                        .start_session()
+                                        .await
+                                    {
+                                        Ok(r) => r,
+                                        Err(e) => {
+                                            let msg = format!(
+                                                "session/load failed: {e}. You can start a New session."
+                                            );
+                                            let _ = app.emit(
+                                                "acp://status",
+                                                SessionStatus {
+                                                    connected: false,
+                                                    cwd: Some(cwd.display().to_string()),
+                                                    session_id: None,
+                                                    busy: false,
+                                                    error: Some(msg.clone()),
+                                                    load_session_supported: Some(true),
+                                                },
+                                            );
+                                            return Err(
+                                                agent_client_protocol::Error::internal_error()
+                                                    .data(msg),
+                                            );
+                                        }
+                                    };
+
+                                    let loaded_sid = restored.session().session_id().clone();
+                                    // Drain replayed session/update into the chat UI, then drop
+                                    // ActiveSession so later updates hit the connection handler.
+                                    drain_load_replay(&app, restored.into_session()).await;
+                                    loaded_sid
+                                } else {
+                                    let new_session = connection
+                                        .send_request(NewSessionRequest::new(cwd.clone()))
+                                        .block_task()
+                                        .await?;
+                                    new_session.session_id
+                                };
+
                                 {
                                     let mut slot = session_id.lock().await;
                                     *slot = Some(sid.clone());
@@ -233,6 +330,7 @@ impl AcpSession {
                                         session_id: Some(sid.0.to_string()),
                                         busy: false,
                                         error: None,
+                                        load_session_supported: Some(load_session_supported),
                                     },
                                 );
 
@@ -247,6 +345,9 @@ impl AcpSession {
                                                     session_id: Some(sid.0.to_string()),
                                                     busy: true,
                                                     error: None,
+                                                    load_session_supported: Some(
+                                                        load_session_supported,
+                                                    ),
                                                 },
                                             );
                                             let result = connection
@@ -271,6 +372,9 @@ impl AcpSession {
                                                     session_id: Some(sid.0.to_string()),
                                                     busy: false,
                                                     error: None,
+                                                    load_session_supported: Some(
+                                                        load_session_supported,
+                                                    ),
                                                 },
                                             );
                                         }
@@ -297,6 +401,7 @@ impl AcpSession {
                                 session_id: None,
                                 busy: false,
                                 error: Some(format!("{e}")),
+                                load_session_supported: None,
                             },
                         );
                     } else {
@@ -308,9 +413,11 @@ impl AcpSession {
                                 session_id: None,
                                 busy: false,
                                 error: None,
+                                load_session_supported: None,
                             },
                         );
                     }
+                    clear_session_slot(&app_for_status);
                 });
             })
             .map_err(|e| format!("failed to spawn acp thread: {e}"))?;
@@ -391,6 +498,12 @@ impl AppState {
     }
 }
 
+fn clear_session_slot(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let mut guard = state.inner.blocking_lock();
+    guard.session = None;
+}
+
 fn content_block_text(block: &ContentBlock) -> String {
     match block {
         ContentBlock::Text(t) => t.text.clone(),
@@ -415,6 +528,37 @@ fn emit_session_update(app: &AppHandle, update: &SessionUpdate) {
         other => ("other".into(), format!("{other:?}")),
     };
     let _ = app.emit("acp://stream", StreamEvent { kind, text });
+}
+
+/// Drain queued `session/load` replay updates into the UI, then return so
+/// `ActiveSession` can be dropped and subsequent traffic uses the connection
+/// notification handler.
+async fn drain_load_replay(
+    app: &AppHandle,
+    mut session: agent_client_protocol::ActiveSession<'static, Agent>,
+) {
+    loop {
+        tokio::select! {
+            biased;
+            result = session.read_update() => {
+                match result {
+                    Ok(SessionMessage::SessionMessage(dispatch)) => {
+                        let app = app.clone();
+                        let _ = MatchDispatch::new(dispatch)
+                            .if_notification(async move |notif: SessionNotification| {
+                                emit_session_update(&app, &notif.update);
+                                Ok(())
+                            })
+                            .await;
+                    }
+                    Ok(SessionMessage::StopReason(_)) => {}
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(150)) => break,
+        }
+    }
 }
 
 // Silence unused import warnings for kinds we pattern on in UI helpers.

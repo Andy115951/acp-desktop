@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { Store } from "@tauri-apps/plugin-store";
 
 export type StreamLine = {
   id: string;
@@ -16,18 +17,56 @@ export type PermissionRequest = {
   options: { id: string; name: string; kind: string }[];
 };
 
+type SessionPrefs = Record<string, string>; // cwd -> sessionId
+
+const PREFS_FILE = "prefs.json";
+const PREFS_KEY = "grok.sessionByCwd";
+
+let prefsStore: Store | null = null;
+
+async function getPrefsStore(): Promise<Store> {
+  if (!prefsStore) {
+    prefsStore = await Store.load(PREFS_FILE);
+  }
+  return prefsStore;
+}
+
+async function loadSavedSessionId(cwd: string): Promise<string | null> {
+  try {
+    const store = await getPrefsStore();
+    const map = (await store.get<SessionPrefs>(PREFS_KEY)) ?? {};
+    return map[cwd] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveSessionPrefs(cwd: string, sessionId: string): Promise<void> {
+  try {
+    const store = await getPrefsStore();
+    const map = (await store.get<SessionPrefs>(PREFS_KEY)) ?? {};
+    map[cwd] = sessionId;
+    await store.set(PREFS_KEY, map);
+    await store.save();
+  } catch {
+    // Prefs are best-effort; never block the session on store failure.
+  }
+}
+
 type SessionState = {
   cwd: string | null;
   connected: boolean;
   busy: boolean;
   error: string | null;
   sessionId: string | null;
+  savedSessionId: string | null;
+  loadSessionSupported: boolean | null;
   lines: StreamLine[];
   permission: PermissionRequest | null;
   draft: string;
   setDraft: (v: string) => void;
   pickFolder: () => Promise<void>;
-  connect: () => Promise<void>;
+  connect: (mode?: "new" | "resume") => Promise<void>;
   disconnect: () => Promise<void>;
   send: () => Promise<void>;
   cancel: () => Promise<void>;
@@ -44,6 +83,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   busy: false,
   error: null,
   sessionId: null,
+  savedSessionId: null,
+  loadSessionSupported: null,
   lines: [],
   permission: null,
   draft: "",
@@ -52,19 +93,47 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   pickFolder: async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
-      set({ cwd: selected, error: null });
+      const savedSessionId = await loadSavedSessionId(selected);
+      set({
+        cwd: selected,
+        error: null,
+        savedSessionId,
+        sessionId: null,
+        loadSessionSupported: null,
+      });
     }
   },
-  connect: async () => {
+  connect: async (mode = "new") => {
     const cwd = get().cwd;
     if (!cwd) {
       set({ error: "Pick a workspace folder first." });
       return;
     }
-    set({ error: null, busy: true });
+    const resumeSessionId =
+      mode === "resume" ? get().savedSessionId ?? undefined : undefined;
+    if (mode === "resume" && !resumeSessionId) {
+      set({ error: "No saved session for this folder." });
+      return;
+    }
+    if (mode === "resume" && get().loadSessionSupported === false) {
+      set({
+        error:
+          "Agent does not advertise loadSession; Resume is unavailable. Use New session.",
+      });
+      return;
+    }
+    set({
+      error: null,
+      busy: true,
+      lines: mode === "resume" ? [] : get().lines,
+    });
     try {
-      await invoke("connect_grok", { cwd });
-      set({ connected: true, busy: false });
+      await invoke("connect_grok", {
+        cwd,
+        resumeSessionId: resumeSessionId ?? null,
+      });
+      // connected / sessionId come from acp://status events
+      set({ busy: false });
     } catch (e) {
       set({
         connected: false,
@@ -77,7 +146,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     try {
       await invoke("disconnect_grok");
     } finally {
-      set({ connected: false, busy: false, sessionId: null, permission: null });
+      set({
+        connected: false,
+        busy: false,
+        sessionId: null,
+        permission: null,
+      });
     }
   },
   send: async () => {
@@ -168,13 +242,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         sessionId?: string | null;
         busy: boolean;
         error?: string | null;
+        loadSessionSupported?: boolean | null;
       }>("acp://status", (ev) => {
+        const cwd = ev.payload.cwd ?? get().cwd;
+        const sessionId = ev.payload.sessionId ?? null;
+        const loadSessionSupported =
+          ev.payload.loadSessionSupported ?? get().loadSessionSupported;
+
+        if (
+          ev.payload.connected &&
+          sessionId &&
+          cwd &&
+          !ev.payload.error
+        ) {
+          void saveSessionPrefs(cwd, sessionId).then(() => {
+            set({ savedSessionId: sessionId });
+          });
+        }
+
         set({
           connected: ev.payload.connected,
-          cwd: ev.payload.cwd ?? get().cwd,
-          sessionId: ev.payload.sessionId ?? get().sessionId,
+          cwd: cwd ?? get().cwd,
+          sessionId: sessionId ?? (ev.payload.connected ? get().sessionId : null),
           busy: ev.payload.busy,
           error: ev.payload.error ?? null,
+          loadSessionSupported,
         });
       }),
     );

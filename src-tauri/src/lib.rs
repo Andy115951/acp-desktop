@@ -67,7 +67,11 @@ fn detect_agents() -> Vec<AgentInfo> {
 }
 
 #[tauri::command]
-async fn connect_grok(app: tauri::AppHandle, cwd: String) -> Result<(), String> {
+async fn connect_grok(
+    app: tauri::AppHandle,
+    cwd: String,
+    resume_session_id: Option<String>,
+) -> Result<(), String> {
     let path = PathBuf::from(&cwd);
     if !path.is_dir() {
         return Err(format!("Not a directory: {cwd}"));
@@ -75,7 +79,7 @@ async fn connect_grok(app: tauri::AppHandle, cwd: String) -> Result<(), String> 
     if !binary_on_path("grok") {
         return Err("`grok` not found on PATH".into());
     }
-    AcpSession::start(app, path)
+    AcpSession::start(app, path, resume_session_id)
 }
 
 #[tauri::command]
@@ -140,6 +144,7 @@ async fn session_status(app: tauri::AppHandle) -> SessionStatus {
             session_id: None,
             busy: false,
             error: None,
+            load_session_supported: None,
         },
         None => SessionStatus {
             connected: false,
@@ -147,6 +152,7 @@ async fn session_status(app: tauri::AppHandle) -> SessionStatus {
             session_id: None,
             busy: false,
             error: None,
+            load_session_supported: None,
         },
     }
 }
@@ -156,6 +162,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             detect_agents,
