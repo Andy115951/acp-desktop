@@ -26,4 +26,8 @@ export default defineConfig(() => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts"],
+  },
 }));

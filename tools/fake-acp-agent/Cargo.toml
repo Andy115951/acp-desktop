@@ -1,0 +1,14 @@
+[package]
+name = "fake-acp-agent"
+version = "0.1.0"
+edition = "2021"
+description = "In-repo ACP stdio agent that always requests permission (allow/deny smoke)"
+publish = false
+
+[[bin]]
+name = "fake-acp-agent"
+path = "src/main.rs"
+
+[dependencies]
+agent-client-protocol = "2.2.0"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "time"] }

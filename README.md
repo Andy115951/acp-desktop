@@ -43,7 +43,9 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 ## Status
 
-M1 scaffold in place: Tauri 2 + React (Vite/TS) + Tailwind + Zustand, with a `detect_agents` command that probes `PATH` for `grok` (and stub entries for later agents). No ACP handshake yet.
+M1 is on `main`. **M2 (Grok ACP path)** is in progress on [`feat/m2-grok-acp`](https://github.com/Andy115951/acp-desktop/pull/8): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences store only cwd→sessionId (no chat history).
+
+Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` covers `session/request_permission` allow/deny **and** `loadSession` / `session/load` replay (`fake-agent: resumed`) without Grok (real Grok often skips surfacing permissions). Host now deadline-drains `session/load` ActiveSession replay (fixes missed `fake-agent: resumed` after Disconnect→Resume). Full in-app UI E2E (permission cards + Disconnect→Resume with fake agent) is still the remaining gate before closing [#3](https://github.com/Andy115951/acp-desktop/issues/3).
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
@@ -55,6 +57,35 @@ Prerequisites: [Node.js](https://nodejs.org/), [Rust](https://rustup.rs/), and O
 npm install
 npm run tauri dev
 ```
+
+### Fake ACP agent (permission smoke)
+
+Grok may not emit `session/request_permission` for every prompt. For a deterministic allow/deny path:
+
+```bash
+# From repo root (Cargo workspace)
+cargo test -p fake-acp-agent
+cargo test -p acp-desktop
+npx tsc --noEmit
+npm test
+
+# One-command Tauri UI smoke (builds fake agent, sets ACP_DESKTOP_FAKE_AGENT=1)
+npm run tauri:fake
+```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the same `cargo test` + `tsc` + `vitest` checks on push/PR.
+
+In the app, use the **Dev: fake ACP agent** toggle (same process-env override; not persisted). Then: Pick folder → Connect → Send any prompt → permission modal Allow/Reject (keys: **a**/**Enter** Allow, **r** Reject, **Esc** Cancel; toolbar Cancel also clears a pending Ask) → Disconnect → **Resume** (expect `fake-agent: resumed` replay; prompt still asks permission).
+
+Env alternatives:
+
+```bash
+cargo build -p fake-acp-agent
+ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
+# or: ACP_DESKTOP_AGENT_CMD="$(pwd)/target/debug/fake-acp-agent" npm run tauri dev
+```
+
+`ACP_DESKTOP_FAKE_AGENT=1` resolves `target/debug/fake-acp-agent` from the workspace when the binary is not on PATH. Default for users remains `grok agent stdio`.
 
 ## Roadmap
 
