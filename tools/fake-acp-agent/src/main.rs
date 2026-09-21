@@ -81,23 +81,20 @@ async fn main() -> agent_client_protocol::Result<()> {
                     );
                 }
 
-                // Spawn so we can yield between replay notify and the load
-                // response — keeps session/update ahead of the JSON-RPC result
-                // on stdio (host load_session_from queues pre-response replay).
+                // Emit replay on this task before responding so it is on the
+                // wire ahead of the JSON-RPC result. Respond from a spawn after
+                // yield so we do not await block_task inside the request handler.
                 let session_id = req.session_id.clone();
-                connection.spawn({
-                    let connection = connection.clone();
-                    async move {
-                        connection.send_notification(SessionNotification::new(
-                            session_id,
-                            SessionUpdate::AgentMessageChunk(ContentChunk::new(
-                                ContentBlock::Text(TextContent::new(RESUME_REPLAY)),
-                            )),
-                        ))?;
-                        tokio::task::yield_now().await;
-                        responder.respond(LoadSessionResponse::new())?;
-                        Ok(())
-                    }
+                connection.send_notification(SessionNotification::new(
+                    session_id,
+                    SessionUpdate::AgentMessageChunk(ContentChunk::new(
+                        ContentBlock::Text(TextContent::new(RESUME_REPLAY)),
+                    )),
+                ))?;
+                connection.spawn(async move {
+                    tokio::task::yield_now().await;
+                    responder.respond(LoadSessionResponse::new())?;
+                    Ok(())
                 })?;
                 Ok(())
             },

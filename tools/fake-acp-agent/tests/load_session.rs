@@ -286,3 +286,149 @@ async fn load_fake_session_id_across_fresh_process_replays() {
         "expected resume replay, got {text:?}"
     );
 }
+
+
+/// Host-style drain (mirrors `acp_host::drain_load_replay`): wait up to 2s for
+/// the first ActiveSession update, then 250ms idle. Pre-response session/update
+/// is routed only into ActiveSession — dropping without draining loses replay.
+async fn drain_like_host(
+    mut session: agent_client_protocol::ActiveSession<'static, Agent>,
+    sink: Arc<Mutex<String>>,
+) -> usize {
+    let first_wait = Duration::from_secs(2);
+    let idle_after = Duration::from_millis(250);
+    let mut drained = 0usize;
+    let mut saw_any = false;
+    let overall = tokio::time::Instant::now() + first_wait;
+
+    loop {
+        let now = tokio::time::Instant::now();
+        if now >= overall && !saw_any {
+            break;
+        }
+        let wait = if saw_any {
+            idle_after
+        } else {
+            overall.saturating_duration_since(now)
+        };
+        if wait.is_zero() {
+            break;
+        }
+
+        match tokio::time::timeout(wait, session.read_update()).await {
+            Ok(Ok(SessionMessage::SessionMessage(dispatch))) => {
+                let sink = sink.clone();
+                let hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let hit_flag = hit.clone();
+                let result = MatchDispatch::new(dispatch)
+                    .if_notification(async move |notif: SessionNotification| {
+                        if let SessionUpdate::AgentMessageChunk(chunk) = &notif.update {
+                            let text = match &chunk.content {
+                                ContentBlock::Text(t) => t.text.clone(),
+                                other => format!("{other:?}"),
+                            };
+                            sink.lock().unwrap().push_str(&text);
+                            hit_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        Ok(())
+                    })
+                    .await
+                    .otherwise_ignore();
+                if result.is_ok() && hit.load(std::sync::atomic::Ordering::SeqCst) {
+                    drained += 1;
+                    saw_any = true;
+                }
+            }
+            Ok(Ok(SessionMessage::StopReason(_))) => {}
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) => break,
+            Err(_) => break,
+        }
+    }
+
+    drained
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_style_drain_captures_resume_replay() {
+    let replay = Arc::new(Mutex::new(String::new()));
+    let replay_for_connect = replay.clone();
+
+    let connect = Client
+        .builder()
+        .name("host-drain-resume")
+        .connect_with(fake_agent(), |connection: ConnectionTo<Agent>| {
+            let replay_for_connect = replay_for_connect.clone();
+            async move {
+                let init = connection
+                    .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                    .block_task()
+                    .await?;
+                assert!(init.agent_capabilities.load_session);
+
+                let restored = connection
+                    .load_session_from(LoadSessionRequest::new(
+                        "fake-session-7",
+                        std::env::temp_dir(),
+                    ))
+                    .block_task()
+                    .start_session()
+                    .await?;
+
+                let n = drain_like_host(restored.into_session(), replay_for_connect).await;
+                assert!(n >= 1, "host-style drain must read at least one replay update");
+                Ok(())
+            }
+        });
+
+    tokio::time::timeout(Duration::from_secs(20), connect)
+        .await
+        .expect("timed out")
+        .expect("client connect");
+
+    let text = replay.lock().unwrap().clone();
+    assert!(
+        text.contains("fake-agent: resumed"),
+        "expected resume replay in drained updates, got {text:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_style_drain_stress_five_loads() {
+    for i in 0..5 {
+        let replay = Arc::new(Mutex::new(String::new()));
+        let replay_for_connect = replay.clone();
+        let connect = Client
+            .builder()
+            .name(format!("host-drain-stress-{i}"))
+            .connect_with(fake_agent(), |connection: ConnectionTo<Agent>| {
+                let replay_for_connect = replay_for_connect.clone();
+                async move {
+                    connection
+                        .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                        .block_task()
+                        .await?;
+                    let restored = connection
+                        .load_session_from(LoadSessionRequest::new(
+                            format!("fake-session-{}", 100 + i),
+                            std::env::temp_dir(),
+                        ))
+                        .block_task()
+                        .start_session()
+                        .await?;
+                    let n = drain_like_host(restored.into_session(), replay_for_connect).await;
+                    assert!(n >= 1, "iteration {i}: expected drained replay");
+                    Ok(())
+                }
+            });
+        tokio::time::timeout(Duration::from_secs(20), connect)
+            .await
+            .unwrap_or_else(|_| panic!("iteration {i} timed out"))
+            .unwrap_or_else(|e| panic!("iteration {i} failed: {e}"));
+        let text = replay.lock().unwrap().clone();
+        assert!(
+            text.contains("fake-agent: resumed"),
+            "iteration {i}: got {text:?}"
+        );
+    }
+}

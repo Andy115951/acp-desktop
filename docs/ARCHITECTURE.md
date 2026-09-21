@@ -71,7 +71,7 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 - In-repo crate `tools/fake-acp-agent`: ACP v1 stdio agent that **always** `session/request_permission`s on prompt (allow → stream text + EndTurn; reject → EndTurn with no side-effect text). Advertises `loadSession` and implements `session/load` for `fake-session-N` ids (replay `fake-agent: resumed` before the load response; unknown ids → invalid params) so Mac `tauri:fake` can exercise Disconnect→Resume without Grok.
 - Host override: `ACP_DESKTOP_AGENT_CMD` (full command) or `ACP_DESKTOP_FAKE_AGENT=1` (PATH, else workspace `target/{debug,release}/fake-acp-agent`). Default remains `grok agent stdio`.
 - Dev UI toggle sets the same process env for the running app (not persisted). `npm run tauri:fake` is the one-command smoke entry.
-- Automated: `cargo test -p fake-acp-agent` (allow + reject + loadSession) + `cargo test -p acp-desktop` + `tsc`; GitHub Actions CI runs these on push/PR. Does not replace Mac UI E2E for permission cards / Resume.
+- Host `drain_load_replay` waits up to 2s for the first ActiveSession update then 250ms idle (pre-response `session/update` never hits the connection handler — dropping early lost Resume replay). Automated: `cargo test -p fake-acp-agent` (allow + reject + loadSession + host-style drain) + `cargo test -p acp-desktop` + `tsc`; GitHub Actions CI runs these on push/PR. Does not replace Mac UI E2E for permission cards / Resume.
 
 ## Deferred
 

@@ -273,7 +273,9 @@ export default function App() {
                       ? "text-sky-200"
                       : line.kind === "agent_thought"
                         ? "text-violet-300/80 italic"
-                        : "text-slate-100"
+                        : line.kind === "status"
+                          ? "text-amber-200/90"
+                          : "text-slate-100"
                   }
                 >
                   {line.text}

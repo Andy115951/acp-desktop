@@ -497,7 +497,19 @@ impl AcpSession {
                                     let loaded_sid = restored.session().session_id().clone();
                                     // Drain replayed session/update into the chat UI, then drop
                                     // ActiveSession so later updates hit the connection handler.
-                                    drain_load_replay(&app, restored.into_session()).await;
+                                    let n = drain_load_replay(&app, restored.into_session()).await;
+                                    if n == 0 {
+                                        // Surface a clear UI signal when load succeeded but
+                                        // produced no replay chunks (agent quirk / empty history).
+                                        let _ = app.emit(
+                                            "acp://stream",
+                                            StreamEvent {
+                                                kind: "status".into(),
+                                                text: "Resume: session loaded (no replayed history)"
+                                                    .into(),
+                                            },
+                                        );
+                                    }
                                     loaded_sid
                                 } else {
                                     let new_session = connection
@@ -729,32 +741,70 @@ fn emit_session_update(app: &AppHandle, update: &SessionUpdate) {
 /// Drain queued `session/load` replay updates into the UI, then return so
 /// `ActiveSession` can be dropped and subsequent traffic uses the connection
 /// notification handler.
+///
+/// Important: `load_session_from` routes pre-response `session/update` into the
+/// `ActiveSession` channel (they do **not** hit the connection-level
+/// `on_receive_notification`). Dropping the session without draining loses
+/// those updates. A short competing `select!` sleep was racing the first
+/// replay chunk on slower hosts — wait up to `first_wait` for the first
+/// update, then a short idle for trailing chunks.
+///
+/// Returns how many `session/update` notifications were drained.
 async fn drain_load_replay(
     app: &AppHandle,
     mut session: agent_client_protocol::ActiveSession<'static, Agent>,
-) {
+) -> usize {
+    // Generous first-chunk budget: notification is queued before the load
+    // response, but stdio + spawn scheduling can still lag briefly after
+    // `start_session` returns.
+    let first_wait = Duration::from_secs(2);
+    let idle_after = Duration::from_millis(250);
+    let mut drained = 0usize;
+    let mut saw_any = false;
+    let overall = tokio::time::Instant::now() + first_wait;
+
     loop {
-        tokio::select! {
-            biased;
-            result = session.read_update() => {
-                match result {
-                    Ok(SessionMessage::SessionMessage(dispatch)) => {
-                        let app = app.clone();
-                        let _ = MatchDispatch::new(dispatch)
-                            .if_notification(async move |notif: SessionNotification| {
-                                emit_session_update(&app, &notif.update);
-                                Ok(())
-                            })
-                            .await;
-                    }
-                    Ok(SessionMessage::StopReason(_)) => {}
-                    Ok(_) => {}
-                    Err(_) => break,
+        let now = tokio::time::Instant::now();
+        if now >= overall && !saw_any {
+            break;
+        }
+        let wait = if saw_any {
+            idle_after
+        } else {
+            overall.saturating_duration_since(now)
+        };
+        if wait.is_zero() {
+            break;
+        }
+
+        match tokio::time::timeout(wait, session.read_update()).await {
+            Ok(Ok(SessionMessage::SessionMessage(dispatch))) => {
+                let app = app.clone();
+                let hit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let hit_flag = hit.clone();
+                let result = MatchDispatch::new(dispatch)
+                    .if_notification(async move |notif: SessionNotification| {
+                        emit_session_update(&app, &notif.update);
+                        hit_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                        Ok(())
+                    })
+                    .await
+                    .otherwise_ignore();
+                if result.is_ok() && hit.load(std::sync::atomic::Ordering::SeqCst) {
+                    drained += 1;
+                    saw_any = true;
                 }
             }
-            _ = tokio::time::sleep(Duration::from_millis(150)) => break,
+            Ok(Ok(SessionMessage::StopReason(_))) => {
+                // Load replay is notifications only; stop reasons are prompt-turn bookkeeping.
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) => break,
+            Err(_) => break, // idle / first-chunk deadline
         }
     }
+
+    drained
 }
 
 // Silence unused import warnings for kinds we pattern on in UI helpers.

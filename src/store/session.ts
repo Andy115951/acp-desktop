@@ -125,14 +125,25 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       error: null,
       busy: true,
-      lines: mode === "resume" ? [] : get().lines,
+      // Clear prior transcript on Resume, then show a local marker so empty
+      // replay is distinguishable from "events never arrived".
+      lines:
+        mode === "resume"
+          ? [
+              {
+                id: `resume-${++lineCounter}`,
+                kind: "status",
+                text: "Resuming session…",
+              },
+            ]
+          : get().lines,
     });
     try {
       await invoke("connect_grok", {
         cwd,
         resumeSessionId: resumeSessionId ?? null,
       });
-      // connected / sessionId come from acp://status events
+      // connected / sessionId / replay lines come from acp://status + acp://stream
       set({ busy: false });
     } catch (e) {
       set({
@@ -206,16 +217,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const unsubs: UnlistenFn[] = [];
     unsubs.push(
       await listen<{ kind: string; text: string }>("acp://stream", (ev) => {
-        set({
+        // Functional update avoids lost lines when multiple stream events
+        // arrive back-to-back (e.g. session/load replay + follow-ups).
+        set((state) => ({
           lines: [
-            ...get().lines,
+            ...state.lines,
             {
               id: `s-${++lineCounter}`,
               kind: ev.payload.kind,
               text: ev.payload.text,
             },
           ],
-        });
+        }));
       }),
     );
     unsubs.push(

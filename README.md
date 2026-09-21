@@ -45,7 +45,7 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 M1 is on `main`. **M2 (Grok ACP path)** is in progress on [`feat/m2-grok-acp`](https://github.com/Andy115951/acp-desktop/pull/8): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences store only cwd→sessionId (no chat history).
 
-Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` covers `session/request_permission` allow/deny **and** `loadSession` / `session/load` replay (`fake-agent: resumed`) without Grok (real Grok often skips surfacing permissions). Full in-app UI E2E (permission cards + Disconnect→Resume with fake agent) is still the remaining gate before closing [#3](https://github.com/Andy115951/acp-desktop/issues/3).
+Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` covers `session/request_permission` allow/deny **and** `loadSession` / `session/load` replay (`fake-agent: resumed`) without Grok (real Grok often skips surfacing permissions). Host now deadline-drains `session/load` ActiveSession replay (fixes missed `fake-agent: resumed` after Disconnect→Resume). Full in-app UI E2E (permission cards + Disconnect→Resume with fake agent) is still the remaining gate before closing [#3](https://github.com/Andy115951/acp-desktop/issues/3).
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
