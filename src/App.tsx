@@ -3,7 +3,14 @@ import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
 
 export default function App() {
-  const { agents, loading, error: detectError, refresh } = useAgentsStore();
+  const {
+    agents,
+    loading,
+    error: detectError,
+    override,
+    refresh,
+    setFakeAgent,
+  } = useAgentsStore();
   const {
     cwd,
     connected,
@@ -39,8 +46,14 @@ export default function App() {
   }, [bindEvents]);
 
   const grok = agents.find((a) => a.id === "grok");
+  const usingFake = !!override?.usingOverride;
+  const canConnectAgent = !!grok?.available || usingFake;
   const canResume =
-    !!savedSessionId && loadSessionSupported !== false && !!cwd && !connected;
+    !!savedSessionId &&
+    loadSessionSupported !== false &&
+    !!cwd &&
+    !connected &&
+    canConnectAgent;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-8">
@@ -119,8 +132,46 @@ export default function App() {
         </ul>
       </section>
 
+      <section className="rounded-xl border border-amber-900/50 bg-amber-950/20 p-4 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-medium text-amber-100">
+              Dev: fake ACP agent
+            </h2>
+            <p className="text-xs text-amber-200/70">
+              Deterministic{" "}
+              <code className="text-amber-100/90">session/request_permission</code>{" "}
+              for permission-card E2E (process env only; not persisted).
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-amber-100">
+            <input
+              type="checkbox"
+              checked={usingFake}
+              disabled={connected || busy}
+              onChange={(e) => {
+                void setFakeAgent(e.target.checked).catch(() => undefined);
+              }}
+              className="rounded border-amber-700"
+            />
+            Use fake agent
+          </label>
+        </div>
+        <p className="text-xs text-amber-200/60 break-all">
+          mode: {override?.mode ?? "…"} · cmd:{" "}
+          <code>{override?.command?.join(" ") ?? "—"}</code>
+          {override?.fakeAgentPath
+            ? ` · binary ${override.fakeAgentPath}`
+            : usingFake
+              ? " · binary missing (cargo build -p fake-acp-agent)"
+              : ""}
+        </p>
+      </section>
+
       <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-        <h2 className="text-sm font-medium text-slate-200">Grok session</h2>
+        <h2 className="text-sm font-medium text-slate-200">
+          {usingFake ? "Fake agent session" : "Grok session"}
+        </h2>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -136,7 +187,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => void connect("resume")}
-                    disabled={!canResume || !grok?.available || busy}
+                    disabled={!canResume || busy}
                     title={
                       loadSessionSupported === false
                         ? "Agent does not advertise loadSession"
@@ -149,7 +200,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => void connect("new")}
-                    disabled={!cwd || !grok?.available || busy}
+                    disabled={!cwd || !canConnectAgent || busy}
                     className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                   >
                     New session
@@ -159,7 +210,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => void connect("new")}
-                  disabled={!cwd || !grok?.available || busy}
+                  disabled={!cwd || !canConnectAgent || busy}
                   className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                 >
                   Connect
@@ -243,7 +294,7 @@ export default function App() {
               }
             }}
             disabled={!connected || busy}
-            placeholder={connected ? "Message Grok…" : "Connect first"}
+            placeholder={connected ? (usingFake ? "Message fake agent…" : "Message Grok…") : "Connect first"}
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 disabled:opacity-50"
           />
           <button

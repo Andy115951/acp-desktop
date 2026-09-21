@@ -67,13 +67,21 @@ Grok may not emit `session/request_permission` for every prompt. For a determini
 cargo test -p fake-acp-agent
 cargo test -p acp-desktop
 
-# Optional: point the desktop host at the fake agent instead of Grok
-cargo build -p fake-acp-agent
-ACP_DESKTOP_AGENT_CMD="$(pwd)/target/debug/fake-acp-agent" npm run tauri dev
-# or: ACP_DESKTOP_FAKE_AGENT=1  (requires `fake-acp-agent` on PATH)
+# One-command Tauri UI smoke (builds fake agent, sets ACP_DESKTOP_FAKE_AGENT=1)
+npm run tauri:fake
 ```
 
-Default for users remains `grok agent stdio`. Overrides are env-only and not persisted.
+In the app, use the **Dev: fake ACP agent** toggle (same process-env override; not persisted). Then: Pick folder → Connect → Send any prompt → permission modal Allow/Reject.
+
+Env alternatives:
+
+```bash
+cargo build -p fake-acp-agent
+ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
+# or: ACP_DESKTOP_AGENT_CMD="$(pwd)/target/debug/fake-acp-agent" npm run tauri dev
+```
+
+`ACP_DESKTOP_FAKE_AGENT=1` resolves `target/debug/fake-acp-agent` from the workspace when the binary is not on PATH. Default for users remains `grok agent stdio`.
 
 ## Roadmap
 

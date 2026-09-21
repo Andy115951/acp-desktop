@@ -69,7 +69,8 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 ## Testing / fake agent
 
 - In-repo crate `tools/fake-acp-agent`: ACP v1 stdio agent that **always** `session/request_permission`s on prompt (allow → stream text + EndTurn; reject → EndTurn with no side-effect text).
-- Host override: `ACP_DESKTOP_AGENT_CMD` (full command) or `ACP_DESKTOP_FAKE_AGENT=1` (runs `fake-acp-agent` from PATH). Default remains `grok agent stdio`.
+- Host override: `ACP_DESKTOP_AGENT_CMD` (full command) or `ACP_DESKTOP_FAKE_AGENT=1` (PATH, else workspace `target/{debug,release}/fake-acp-agent`). Default remains `grok agent stdio`.
+- Dev UI toggle sets the same process env for the running app (not persisted). `npm run tauri:fake` is the one-command smoke entry.
 - Automated: `cargo test -p fake-acp-agent` (allow + reject). Does not replace Mac UI E2E for permission cards.
 
 ## Deferred

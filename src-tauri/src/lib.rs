@@ -1,6 +1,9 @@
 mod acp_host;
 
-use acp_host::{resolve_agent_command, using_override_agent, AcpSession, AppState, SessionStatus};
+use acp_host::{
+    agent_override_status, resolve_agent_command, set_fake_agent_enabled,
+    using_override_agent, AcpSession, AgentOverrideStatus, AppState, SessionStatus,
+};
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
@@ -136,6 +139,16 @@ async fn respond_permission(
 }
 
 #[tauri::command]
+fn get_agent_override() -> Result<AgentOverrideStatus, String> {
+    agent_override_status()
+}
+
+#[tauri::command]
+fn set_fake_agent(enabled: bool) -> Result<AgentOverrideStatus, String> {
+    set_fake_agent_enabled(enabled)
+}
+
+#[tauri::command]
 async fn session_status(app: tauri::AppHandle) -> SessionStatus {
     let state = app.state::<AppState>();
     let guard = state.inner.lock().await;
@@ -173,6 +186,8 @@ pub fn run() {
             send_prompt,
             cancel_prompt,
             respond_permission,
+            get_agent_override,
+            set_fake_agent,
             session_status
         ])
         .run(tauri::generate_context!())
@@ -210,9 +225,30 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("ACP_DESKTOP_AGENT_CMD");
         std::env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
-        assert_eq!(resolve_agent_command().unwrap(), vec!["fake-acp-agent"]);
+        let cmd = resolve_agent_command().expect("fake agent should resolve after cargo build");
+        assert_eq!(cmd.len(), 1);
+        assert!(
+            cmd[0].ends_with("fake-acp-agent") || cmd[0].ends_with("fake-acp-agent.exe"),
+            "unexpected fake agent path: {:?}",
+            cmd
+        );
         assert!(using_override_agent());
         std::env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+    }
+
+    #[test]
+    fn set_fake_agent_toggle_roundtrip() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        std::env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+        let on = set_fake_agent_enabled(true).expect("enable fake");
+        assert!(on.using_override);
+        assert_eq!(on.mode, "fake");
+        assert!(on.command[0].contains("fake-acp-agent"));
+        let off = set_fake_agent_enabled(false).expect("disable fake");
+        assert!(!off.using_override);
+        assert_eq!(off.mode, "grok");
+        assert_eq!(off.command, vec!["grok", "agent", "stdio"]);
     }
 
     #[test]
