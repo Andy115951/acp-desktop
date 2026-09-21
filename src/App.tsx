@@ -1,5 +1,12 @@
 import { useEffect, useRef } from "react";
 import { permissionHotkeyAction } from "./lib/permissionHotkey";
+import {
+  canCancelPrompt,
+  canConnectNewSession,
+  canResumeSession,
+  canSendPrompt,
+  draftEnterShouldSend,
+} from "./lib/sessionUiGates";
 import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
 
@@ -72,12 +79,20 @@ export default function App() {
   const grok = agents.find((a) => a.id === "grok");
   const usingFake = !!override?.usingOverride;
   const canConnectAgent = !!grok?.available || usingFake;
-  const canResume =
-    !!savedSessionId &&
-    loadSessionSupported !== false &&
-    !!cwd &&
-    !connected &&
-    canConnectAgent;
+  const uiGates = {
+    cwd,
+    connected,
+    busy,
+    permissionOpen: !!permission,
+    draftTrimmed: !!draft.trim(),
+    savedSessionId,
+    loadSessionSupported,
+    canConnectAgent,
+  };
+  const canResume = canResumeSession(uiGates);
+  const canConnectNew = canConnectNewSession(uiGates);
+  const canSend = canSendPrompt(uiGates);
+  const canCancel = canCancelPrompt(uiGates);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-8">
@@ -224,7 +239,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => void connect("new")}
-                    disabled={!cwd || !canConnectAgent || busy}
+                    disabled={!canConnectNew}
                     className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                   >
                     New session
@@ -234,7 +249,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => void connect("new")}
-                  disabled={!cwd || !canConnectAgent || busy}
+                  disabled={!canConnectNew}
                   className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                 >
                   Connect
@@ -314,13 +329,9 @@ export default function App() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              // While Ask is open, window handler owns a/Enter/r/Esc — do not
-              // also Submit a new prompt from the draft field.
-              if (permission) return;
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
+              if (!draftEnterShouldSend(!!permission, e.key, e.shiftKey)) return;
+              e.preventDefault();
+              void send();
             }}
             disabled={!connected || busy || !!permission}
             placeholder={connected ? (usingFake ? "Message fake agent…" : "Message Grok…") : "Connect first"}
@@ -329,7 +340,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => void send()}
-            disabled={!connected || busy || !!permission || !draft.trim()}
+            disabled={!canSend}
             className="rounded-md bg-sky-700 px-3 py-2 text-sm text-white disabled:opacity-40"
           >
             Send
@@ -337,7 +348,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => void cancel()}
-            disabled={!connected || (!busy && !permission)}
+            disabled={!canCancel}
             title={
               permission
                 ? "Cancel prompt and clear pending Ask"

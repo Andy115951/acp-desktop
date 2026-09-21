@@ -7,7 +7,7 @@ use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
     ContentBlock, InitializeRequest, LoadSessionRequest, NewSessionRequest, PermissionOptionKind,
     PromptRequest, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, StopReason, TextContent,
+    SelectedPermissionOutcome, SessionId, SessionNotification, SessionUpdate, StopReason, TextContent,
 };
 use agent_client_protocol::util::MatchDispatch;
 use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo, ErrorCode, SessionMessage};
@@ -287,6 +287,114 @@ async fn load_fake_session_id_across_fresh_process_replays() {
     );
 }
 
+/// Full Disconnect→Resume smoke: fresh process `session/load` replay, then a
+/// follow-up prompt still surfaces `session/request_permission` (Mac UI path
+/// after Disconnect→Resume with fake agent).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn load_across_fresh_process_then_prompt_still_asks_permission() {
+    let replay = Arc::new(Mutex::new(String::new()));
+    let agent_text = Arc::new(Mutex::new(String::new()));
+    let text_for_notif = agent_text.clone();
+    let saw_perm = Arc::new(Mutex::new(false));
+    let saw_for_perm = saw_perm.clone();
+    let stop_slot = Arc::new(Mutex::new(None::<StopReason>));
+    let stop_for_connect = stop_slot.clone();
+    let replay_for_connect = replay.clone();
+
+    let connect = Client
+        .builder()
+        .name("load-then-prompt-ask")
+        .on_receive_notification(
+            async move |notification: SessionNotification, _cx| {
+                if let SessionUpdate::AgentMessageChunk(chunk) = &notification.update {
+                    let text = match &chunk.content {
+                        ContentBlock::Text(t) => t.text.clone(),
+                        other => format!("{other:?}"),
+                    };
+                    text_for_notif.lock().unwrap().push_str(&text);
+                }
+                Ok(())
+            },
+            agent_client_protocol::on_receive_notification!(),
+        )
+        .on_receive_request(
+            async move |request: RequestPermissionRequest, responder, _connection| {
+                *saw_for_perm.lock().unwrap() = true;
+                let has_allow = request
+                    .options
+                    .iter()
+                    .any(|o| o.kind == PermissionOptionKind::AllowOnce);
+                assert!(has_allow, "expected AllowOnce after resume prompt");
+                responder.respond(RequestPermissionResponse::new(
+                    RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new("allow")),
+                ))
+            },
+            agent_client_protocol::on_receive_request!(),
+        )
+        .connect_with(fake_agent(), |connection: ConnectionTo<Agent>| {
+            let replay_for_connect = replay_for_connect.clone();
+            let stop_slot = stop_for_connect.clone();
+            async move {
+                connection
+                    .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                    .block_task()
+                    .await?;
+
+                let session_id = SessionId::new("fake-session-99");
+                let restored = connection
+                    .load_session_from(LoadSessionRequest::new(
+                        session_id.clone(),
+                        std::env::temp_dir(),
+                    ))
+                    .block_task()
+                    .start_session()
+                    .await?;
+
+                // Prefer ActiveSession drain (host path). Connection
+                // on_receive_notification is a fallback when updates land there.
+                let _n = drain_like_host(restored.into_session(), replay_for_connect).await;
+
+                let prompt = connection
+                    .send_request(PromptRequest::new(
+                        session_id,
+                        vec![ContentBlock::Text(TextContent::new("after-resume"))],
+                    ))
+                    .block_task()
+                    .await?;
+                *stop_slot.lock().unwrap() = Some(prompt.stop_reason);
+                Ok(())
+            }
+        });
+
+    tokio::time::timeout(Duration::from_secs(20), connect)
+        .await
+        .expect("timed out")
+        .expect("client connect");
+
+    let resumed = replay.lock().unwrap().clone();
+    let conn_text_before_assert = agent_text.lock().unwrap().clone();
+    let saw_resume = resumed.contains("fake-agent: resumed")
+        || conn_text_before_assert.contains("fake-agent: resumed");
+    assert!(
+        saw_resume,
+        "expected resume replay before follow-up prompt; ActiveSession={resumed:?} connection={conn_text_before_assert:?}"
+    );
+    assert!(
+        *saw_perm.lock().unwrap(),
+        "expected session/request_permission on post-resume prompt"
+    );
+    let reason = stop_slot
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("stop reason after post-resume prompt");
+    assert_eq!(reason, StopReason::EndTurn);
+    let text = agent_text.lock().unwrap().clone();
+    assert!(
+        text.contains("fake-agent: allowed"),
+        "expected allow side-effect after resume Ask, got {text:?}"
+    );
+}
 
 /// Host-style drain (mirrors `acp_host::drain_load_replay`): wait up to 2s for
 /// the first ActiveSession update, then 250ms idle. Pre-response session/update
