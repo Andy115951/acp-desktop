@@ -8,6 +8,7 @@ import {
   isStalePermissionError,
   shouldDismissAskOnDisconnect,
 } from "../lib/permissionHotkey";
+import { useAgentsStore } from "./agents";
 import {
   PREFS_KEY_LAST_CWD,
   PREFS_KEY_SESSION_BY_CWD,
@@ -172,7 +173,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return;
     }
     // Host now awaits handshake, but still guard double-clicks while busy /
-    // already connected so we never stack a second connect_grok.
+    // already connected so we never stack a second connect_agent.
     if (get().busy || get().connected) {
       return;
     }
@@ -213,7 +214,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             ],
     });
     try {
-      await invoke("connect_grok", {
+      const agentId = useAgentsStore.getState().selectedAgentId || "grok";
+      await invoke("connect_agent", {
+        agentId,
         cwd,
         resumeSessionId: resumeSessionId ?? null,
       });
@@ -229,7 +232,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   disconnect: async () => {
     try {
-      await invoke("disconnect_grok");
+      await invoke("disconnect_agent");
     } finally {
       set({
         connected: false,

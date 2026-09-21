@@ -13,10 +13,12 @@ import { useSessionStore } from "./store/session";
 export default function App() {
   const {
     agents,
+    selectedAgentId,
     loading,
     error: detectError,
     override,
     refresh,
+    selectAgent,
     setFakeAgent,
   } = useAgentsStore();
   const {
@@ -81,9 +83,10 @@ export default function App() {
     allowButtonRef.current?.focus();
   }, [permission]);
 
-  const grok = agents.find((a) => a.id === "grok");
+  const selected = agents.find((a) => a.id === selectedAgentId);
   const usingFake = !!override?.usingOverride;
-  const canConnectAgent = !!grok?.available || usingFake;
+  const canConnectAgent =
+    !!selected?.connectable && (!!selected?.available || usingFake);
   const uiGates = {
     cwd,
     connected,
@@ -109,8 +112,9 @@ export default function App() {
           acp-desktop
         </h1>
         <p className="text-sm text-slate-400">
-          Grok ACP path: last folder restores on launch; connect via{" "}
-          <code className="text-slate-300">grok agent stdio</code>, stream a
+          ACP host path: last folder restores on launch; connect a selected
+          agent via host APIs (first backend:{" "}
+          <code className="text-slate-300">grok agent stdio</code>), stream a
           turn, approve tools with Ask, resume via{" "}
           <code className="text-slate-300">session/load</code>.
         </p>
@@ -134,42 +138,56 @@ export default function App() {
         <ul className="divide-y divide-slate-800">
           {agents.map((agent) => {
             const available = agent.available;
+            const selected = agent.id === selectedAgentId;
+            const clickable = agent.connectable;
             return (
-              <li
-                key={agent.id}
-                className={`flex items-center justify-between gap-3 py-2.5 ${
-                  available ? "text-slate-100" : "text-slate-500"
-                }`}
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block h-2 w-2 rounded-full ${
-                        available ? "bg-emerald-400" : "bg-slate-600"
-                      }`}
-                    />
-                    <span className="font-medium">
-                      {agent.name}
-                      {agent.id !== "grok" ? (
-                        <span className="ml-2 text-xs font-normal text-slate-600">
-                          later
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                  <p className="pl-4 text-xs text-slate-500">
-                    <code>{agent.binary}</code>
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${
-                    available
-                      ? "bg-emerald-950 text-emerald-300 ring-1 ring-emerald-800"
-                      : "bg-slate-950 text-slate-500 ring-1 ring-slate-800"
-                  }`}
+              <li key={agent.id}>
+                <button
+                  type="button"
+                  disabled={!clickable}
+                  onClick={() => selectAgent(agent.id)}
+                  className={`flex w-full items-center justify-between gap-3 py-2.5 text-left ${
+                    available ? "text-slate-100" : "text-slate-500"
+                  } ${
+                    selected
+                      ? "rounded-md bg-slate-800/80 px-2 -mx-2"
+                      : ""
+                  } ${clickable ? "hover:bg-slate-800/40" : "cursor-default"}`}
                 >
-                  {available ? "available" : "missing"}
-                </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-block h-2 w-2 rounded-full ${
+                          available ? "bg-emerald-400" : "bg-slate-600"
+                        }`}
+                      />
+                      <span className="font-medium">
+                        {agent.name}
+                        {!agent.connectable ? (
+                          <span className="ml-2 text-xs font-normal text-slate-600">
+                            later
+                          </span>
+                        ) : selected ? (
+                          <span className="ml-2 text-xs font-normal text-sky-400">
+                            selected
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                    <p className="pl-4 text-xs text-slate-500">
+                      <code>{agent.binary}</code>
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${
+                      available
+                        ? "bg-emerald-950 text-emerald-300 ring-1 ring-emerald-800"
+                        : "bg-slate-950 text-slate-500 ring-1 ring-slate-800"
+                    }`}
+                  >
+                    {available ? "available" : "missing"}
+                  </span>
+                </button>
               </li>
             );
           })}
