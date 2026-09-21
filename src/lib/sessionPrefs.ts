@@ -1,12 +1,24 @@
 /** Pure helpers for session prefs / resume UX (unit-tested; no Tauri). */
 
-/** prefs.json key: cwd → vendor sessionId map (Grok path). */
-export const PREFS_KEY_SESSION_BY_CWD = "grok.sessionByCwd";
-
 /** prefs.json key: last successfully picked workspace folder. */
 export const PREFS_KEY_LAST_CWD = "lastCwd";
 
+/** prefs.json key: last selected agent id (grok / codex / …). */
+export const PREFS_KEY_SELECTED_AGENT = "selectedAgentId";
+
+/**
+ * Legacy Grok-only key (M2). Kept for migration: first read of `grok` still
+ * falls back to this if the per-agent key is empty.
+ */
+export const PREFS_KEY_SESSION_BY_CWD = "grok.sessionByCwd";
+
 export type SessionByCwd = Record<string, string>;
+
+/** Per-vendor prefs key so Resume never mixes Grok/Codex session ids. */
+export function sessionPrefsKey(agentId: string): string {
+  const id = agentId.trim() || "grok";
+  return `${id}.sessionByCwd`;
+}
 
 /** Host error from a failed `session/load` (corrupt / unknown saved id). */
 export function isSessionLoadFailedError(message: string): boolean {

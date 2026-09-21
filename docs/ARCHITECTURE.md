@@ -33,10 +33,13 @@ Rust trait (name may vary) owned by the host:
 - `initialize` / `session_new` / `session_load` / `prompt` / `cancel`
 - map agent → client requests: especially `session/request_permission` → UI allow/deny
 
-First implementation: **GrokBackend** (`grok`, args `["agent", "stdio"]`) in `src-tauri/src/agent_backend.rs`.
+Implementations in `src-tauri/src/agent_backend.rs`:
+- **GrokBackend** — `grok agent stdio`
+- **CodexBackend** (M4) — `codex-acp` if on `PATH`, else `npx -y @agentclientprotocol/codex-acp`; detect via `codex-acp` **or** `codex`
+
 Host commands: `detect_agents`, `connect_agent(agent_id, …)`, `disconnect_agent` — UI never imports vendor spawn details.
 ACP session ops (`initialize` / `session/*` / permission replies) stay on the shared `AcpSession` bridge (protocol-identical for stdio agents).
-Second implementation (later / M4): thin wrapper around an ACP adapter command, same trait — no UI fork per vendor.
+Claude Code stays a built-in table placeholder until a later milestone.
 
 Built-in agent table + optional user overrides (`ACP_DESKTOP_AGENT_CMD` / `ACP_DESKTOP_FAKE_AGENT`). Do **not** depend on the ACP Registry for v1.
 
@@ -53,9 +56,9 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 
 ## Sessions and storage
 
-- Conversation / skill / auth state: **vendor directories** (e.g. `~/.grok`), same as the TUI.
-- App preferences only: last workspace folder, selected agent id, window bits — via `tauri-plugin-store` (or equivalent).
-- No unified cross-vendor session DB. Histories must not mix when switching agents.
+- Conversation / skill / auth state: **vendor directories** (e.g. `~/.grok`, Codex home), same as the TUI.
+- App preferences only: last workspace folder, selected agent id, per-agent `cwd→sessionId` maps (`{agentId}.sessionByCwd`) — via `tauri-plugin-store`.
+- No unified cross-vendor session DB. Switching agents disconnects, clears the transcript, and reloads that vendor's Resume id.
 
 ## Defaults (scaffold)
 
@@ -77,8 +80,7 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 
 ## Deferred
 
-- Second agent: Codex vs Claude Code
-- Switcher chrome: top dropdown vs left list
+- Third agent: Claude Code (`@agentclientprotocol/claude-agent-acp`)
 - Permission card placement: modal vs inline
 - Packaging / notarization / auto-update
 - UI language (start simple; not a protocol blocker)

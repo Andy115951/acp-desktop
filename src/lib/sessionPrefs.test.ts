@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   PREFS_KEY_LAST_CWD,
+  PREFS_KEY_SELECTED_AGENT,
   PREFS_KEY_SESSION_BY_CWD,
   isPlausibleCwd,
   isSessionLoadFailedError,
   removeSessionByCwd,
+  sessionPrefsKey,
   upsertSessionByCwd,
 } from "./sessionPrefs";
 
@@ -12,6 +14,13 @@ describe("prefs keys", () => {
   it("exports stable store key names", () => {
     expect(PREFS_KEY_SESSION_BY_CWD).toBe("grok.sessionByCwd");
     expect(PREFS_KEY_LAST_CWD).toBe("lastCwd");
+    expect(PREFS_KEY_SELECTED_AGENT).toBe("selectedAgentId");
+  });
+
+  it("scopes session maps per agent id", () => {
+    expect(sessionPrefsKey("grok")).toBe("grok.sessionByCwd");
+    expect(sessionPrefsKey("codex")).toBe("codex.sessionByCwd");
+    expect(sessionPrefsKey("  ")).toBe("grok.sessionByCwd");
   });
 });
 

@@ -193,12 +193,13 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn detect_agents_includes_grok_connectable() {
+    fn detect_agents_includes_grok_and_codex_connectable() {
         let agents = detect_agents();
         let grok = agents.iter().find(|a| a.id == "grok").expect("grok");
         assert_eq!(grok.binary, "grok");
         assert!(grok.connectable);
-        assert!(agents.iter().any(|a| a.id == "codex" && !a.connectable));
+        assert!(agents.iter().any(|a| a.id == "codex" && a.connectable));
+        assert!(agents.iter().any(|a| a.id == "claude" && !a.connectable));
     }
 
     #[test]

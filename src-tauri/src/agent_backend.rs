@@ -1,8 +1,9 @@
-//! Pluggable ACP agent backends (M3).
+//! Pluggable ACP agent backends (M3+).
 //!
 //! The UI talks only to host commands (`detect_agents`, `connect_agent`, …).
-//! Vendor spawn details live behind [`AgentBackend`]; first impl is [`GrokBackend`].
-//! A second CLI (M4) adds another impl — no UI fork per vendor.
+//! Vendor spawn details live behind [`AgentBackend`]:
+//! - [`GrokBackend`] — `grok agent stdio`
+//! - [`CodexBackend`] — `codex-acp` / `npx -y @agentclientprotocol/codex-acp` (M4)
 
 use serde::Serialize;
 use std::env;
@@ -51,8 +52,49 @@ impl AgentBackend for GrokBackend {
 
 static GROK_BACKEND: GrokBackend = GrokBackend;
 
+/// Codex via official ACP adapter (`@agentclientprotocol/codex-acp`).
+///
+/// Prefer a global `codex-acp` binary; otherwise spawn through `npx -y`.
+/// Availability: `codex-acp` **or** local `codex` CLI (adapter bundles Codex,
+/// but detecting `codex` means the user already uses Codex on this machine).
+pub struct CodexBackend;
+
+impl AgentBackend for CodexBackend {
+    fn id(&self) -> &'static str {
+        "codex"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Codex"
+    }
+
+    fn binary(&self) -> &'static str {
+        // Shown in the Agents list; primary probe target is still `codex-acp`.
+        "codex-acp"
+    }
+
+    fn detect(&self) -> bool {
+        binary_named_on_path("codex-acp") || binary_named_on_path("codex")
+    }
+
+    fn default_argv(&self) -> Vec<String> {
+        if binary_named_on_path("codex-acp") {
+            vec!["codex-acp".into()]
+        } else {
+            // Official published adapter; first run may download via npm.
+            vec![
+                "npx".into(),
+                "-y".into(),
+                "@agentclientprotocol/codex-acp".into(),
+            ]
+        }
+    }
+}
+
+static CODEX_BACKEND: CodexBackend = CodexBackend;
+
 /// Built-in catalog entry (detect list). Only `backend`-bearing rows are
-/// connectable in this milestone; others are placeholders for M4.
+/// connectable; Claude remains an M4+/later placeholder.
 #[derive(Clone, Copy)]
 pub struct BuiltinAgent {
     pub id: &'static str,
@@ -73,8 +115,8 @@ static BUILTIN_AGENTS: &[BuiltinAgent] = &[
     BuiltinAgent {
         id: "codex",
         name: "Codex",
-        binary: "codex",
-        backend: None,
+        binary: "codex-acp",
+        backend: Some(&CODEX_BACKEND),
     },
     BuiltinAgent {
         id: "claude",
@@ -98,7 +140,7 @@ pub fn lookup_backend(agent_id: &str) -> Result<&'static dyn AgentBackend, Strin
         if entry.id == id {
             return entry.backend.ok_or_else(|| {
                 format!(
-                    "agent `{id}` is listed but not wired yet (M4). Use `grok` or enable the fake/custom override."
+                    "agent `{id}` is listed but not wired yet. Use `grok`/`codex` or enable the fake/custom override."
                 )
             });
         }
@@ -113,7 +155,7 @@ pub struct AgentInfo {
     pub name: String,
     pub binary: String,
     pub available: bool,
-    /// Host can `connect_agent` this id (false for M4 placeholders).
+    /// Host can `connect_agent` this id (false for unwired placeholders).
     pub connectable: bool,
 }
 
@@ -298,13 +340,16 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn builtin_table_lists_grok_connectable() {
+    fn builtin_table_lists_grok_and_codex_connectable() {
         let agents = detect_builtin_agents();
         let grok = agents.iter().find(|a| a.id == "grok").expect("grok");
         assert!(grok.connectable);
         assert_eq!(grok.binary, "grok");
         let codex = agents.iter().find(|a| a.id == "codex").expect("codex");
-        assert!(!codex.connectable);
+        assert!(codex.connectable);
+        assert_eq!(codex.binary, "codex-acp");
+        let claude = agents.iter().find(|a| a.id == "claude").expect("claude");
+        assert!(!claude.connectable);
     }
 
     #[test]
@@ -315,10 +360,31 @@ mod tests {
     }
 
     #[test]
-    fn lookup_backend_rejects_m4_placeholder() {
-        match lookup_backend("codex") {
-            Ok(_) => panic!("codex should not be connectable yet"),
-            Err(err) => assert!(err.contains("M4"), "{err}"),
+    fn lookup_backend_codex_ok() {
+        let b = lookup_backend("codex").unwrap();
+        assert_eq!(b.id(), "codex");
+        assert_eq!(b.binary(), "codex-acp");
+        let argv = b.default_argv();
+        assert!(
+            argv == vec!["codex-acp".to_string()]
+                || argv
+                    == vec![
+                        "npx".to_string(),
+                        "-y".to_string(),
+                        "@agentclientprotocol/codex-acp".to_string()
+                    ],
+            "unexpected codex argv: {argv:?}"
+        );
+    }
+
+    #[test]
+    fn lookup_backend_rejects_claude_placeholder() {
+        match lookup_backend("claude") {
+            Ok(_) => panic!("claude should not be connectable yet"),
+            Err(err) => assert!(
+                err.contains("not wired") || err.contains("M4"),
+                "{err}"
+            ),
         }
     }
 

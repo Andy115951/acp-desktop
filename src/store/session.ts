@@ -15,6 +15,7 @@ import {
   isPlausibleCwd,
   isSessionLoadFailedError,
   removeSessionByCwd,
+  sessionPrefsKey,
   upsertSessionByCwd,
   type SessionByCwd,
 } from "../lib/sessionPrefs";
@@ -43,41 +44,67 @@ async function getPrefsStore(): Promise<Store> {
   return prefsStore;
 }
 
-async function loadSavedSessionId(cwd: string): Promise<string | null> {
+async function loadSavedSessionId(
+  agentId: string,
+  cwd: string,
+): Promise<string | null> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
+    const key = sessionPrefsKey(agentId);
+    let map = (await store.get<SessionByCwd>(key)) ?? {};
+    // Migrate legacy Grok-only key once into grok.sessionByCwd.
+    if (
+      Object.keys(map).length === 0 &&
+      agentId === "grok" &&
+      key !== PREFS_KEY_SESSION_BY_CWD
+    ) {
+      map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
+    } else if (
+      Object.keys(map).length === 0 &&
+      agentId === "grok" &&
+      key === PREFS_KEY_SESSION_BY_CWD
+    ) {
+      // key is already the legacy name — nothing else to try.
+    }
     return map[cwd] ?? null;
   } catch {
     return null;
   }
 }
 
-async function saveSessionPrefs(cwd: string, sessionId: string): Promise<void> {
+async function saveSessionPrefs(
+  agentId: string,
+  cwd: string,
+  sessionId: string,
+): Promise<void> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
-    await store.set(
-      PREFS_KEY_SESSION_BY_CWD,
-      upsertSessionByCwd(map, cwd, sessionId),
-    );
+    const key = sessionPrefsKey(agentId);
+    const map = (await store.get<SessionByCwd>(key)) ?? {};
+    await store.set(key, upsertSessionByCwd(map, cwd, sessionId));
     await store.save();
   } catch {
     // Prefs are best-effort; never block the session on store failure.
   }
 }
 
-async function clearSavedSessionId(cwd: string): Promise<void> {
+async function clearSavedSessionId(agentId: string, cwd: string): Promise<void> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
+    const key = sessionPrefsKey(agentId);
+    const map = (await store.get<SessionByCwd>(key)) ?? {};
     const next = removeSessionByCwd(map, cwd);
     if (next === map) return;
-    await store.set(PREFS_KEY_SESSION_BY_CWD, next);
+    await store.set(key, next);
     await store.save();
   } catch {
     // Prefs are best-effort.
   }
+}
+
+/** Current UI-selected agent (fallback grok). */
+function currentAgentId(): string {
+  return useAgentsStore.getState().selectedAgentId || "grok";
 }
 
 async function saveLastCwd(cwd: string): Promise<void> {
@@ -114,6 +141,7 @@ type SessionState = {
   setDraft: (v: string) => void;
   pickFolder: () => Promise<void>;
   hydrateFromPrefs: () => Promise<void>;
+  reloadForAgent: (agentId: string) => Promise<void>;
   connect: (mode?: "new" | "resume") => Promise<void>;
   disconnect: () => Promise<void>;
   send: () => Promise<void>;
@@ -141,13 +169,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   pickFolder: async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
-      const savedSessionId = await loadSavedSessionId(selected);
+      const savedSessionId = await loadSavedSessionId(
+        currentAgentId(),
+        selected,
+      );
       set({
         cwd: selected,
         error: null,
         savedSessionId,
         sessionId: null,
         loadSessionSupported: null,
+        lines: [],
       });
       void saveLastCwd(selected);
     }
@@ -157,13 +189,28 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (get().cwd) return;
     const lastCwd = await loadLastCwd();
     if (!lastCwd) return;
-    const savedSessionId = await loadSavedSessionId(lastCwd);
+    const savedSessionId = await loadSavedSessionId(currentAgentId(), lastCwd);
     // Bail if the user picked a folder while we were reading prefs.
     if (get().cwd) return;
     set({
       cwd: lastCwd,
       savedSessionId,
       error: null,
+    });
+  },
+  /** Reload Resume id + clear transcript when switching agents (per-vendor). */
+  reloadForAgent: async (agentId: string) => {
+    const cwd = get().cwd;
+    const savedSessionId = cwd
+      ? await loadSavedSessionId(agentId, cwd)
+      : null;
+    set({
+      savedSessionId,
+      sessionId: null,
+      loadSessionSupported: null,
+      lines: [],
+      error: null,
+      permission: null,
     });
   },
   connect: async (mode = "new") => {
@@ -362,7 +409,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           cwd &&
           !ev.payload.error
         ) {
-          void saveSessionPrefs(cwd, sessionId).then(() => {
+          const agentId = currentAgentId();
+          void saveSessionPrefs(agentId, cwd, sessionId).then(() => {
             set({ savedSessionId: sessionId });
           });
         }
@@ -372,7 +420,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const loadFailed =
           !!ev.payload.error && isSessionLoadFailedError(ev.payload.error);
         if (loadFailed && cwd) {
-          void clearSavedSessionId(cwd).then(() => {
+          const agentId = currentAgentId();
+          void clearSavedSessionId(agentId, cwd).then(() => {
             set({ savedSessionId: null });
           });
         }
