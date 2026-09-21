@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+use std::sync::{Mutex as StdMutex};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 #[derive(Debug, Clone, Serialize)]
@@ -232,6 +233,18 @@ pub struct AcpSession {
     session_id: Arc<Mutex<Option<SessionId>>>,
 }
 
+impl Clone for AcpSession {
+    fn clone(&self) -> Self {
+        Self {
+            cmd_tx: self.cmd_tx.clone(),
+            pending_permission: self.pending_permission.clone(),
+            next_perm_id: self.next_perm_id.clone(),
+            cwd: self.cwd.clone(),
+            session_id: self.session_id.clone(),
+        }
+    }
+}
+
 impl AcpSession {
     /// Start a Grok ACP session.
     ///
@@ -245,7 +258,10 @@ impl AcpSession {
     ) -> Result<(), String> {
         let state = app.state::<AppState>();
         {
-            let guard = state.inner.blocking_lock();
+            let guard = state
+                .inner
+                .lock()
+                .map_err(|_| "session state lock poisoned".to_string())?;
             if guard.session.is_some() {
                 return Err("A session is already connected. Disconnect first.".into());
             }
@@ -603,14 +619,19 @@ impl AcpSession {
             session_id,
         };
 
-        let mut guard = state.inner.blocking_lock();
+        let mut guard = state
+            .inner
+            .lock()
+            .map_err(|_| "session state lock poisoned".to_string())?;
         guard.session = Some(session);
         Ok(())
     }
 
     pub async fn prompt(&self, text: String) -> Result<String, String> {
+        // Clone sender first so callers can drop AppState lock before awaiting.
+        let cmd_tx = self.cmd_tx.clone();
         let (tx, rx) = oneshot::channel();
-        self.cmd_tx
+        cmd_tx
             .send(HostCommand::Prompt { text, reply: tx })
             .map_err(|_| "session channel closed".to_string())?;
         rx.await
@@ -660,20 +681,22 @@ pub struct AppStateInner {
 }
 
 pub struct AppState {
-    pub inner: Mutex<AppStateInner>,
+    /// std mutex: short critical sections from both Tauri async commands
+    /// and the dedicated ACP thread (must not use tokio blocking_lock).
+    pub inner: StdMutex<AppStateInner>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(AppStateInner { session: None }),
+            inner: StdMutex::new(AppStateInner { session: None }),
         }
     }
 }
 
 fn clear_session_slot(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let mut guard = state.inner.blocking_lock();
+    let mut guard = state.inner.lock().unwrap_or_else(|e| e.into_inner());
     guard.session = None;
 }
 

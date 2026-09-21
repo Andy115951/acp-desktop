@@ -90,7 +90,10 @@ async fn connect_grok(
 #[tauri::command]
 async fn disconnect_grok(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let mut guard = state.inner.lock().await;
+    let mut guard = state
+        .inner
+        .lock()
+        .map_err(|_| "session state lock poisoned".to_string())?;
     if let Some(session) = guard.session.take() {
         session.stop();
     }
@@ -104,18 +107,24 @@ async fn send_prompt(app: tauri::AppHandle, text: String) -> Result<String, Stri
     if text.is_empty() {
         return Err("empty prompt".into());
     }
-    let guard = state.inner.lock().await;
-    let session = guard
-        .session
-        .as_ref()
-        .ok_or_else(|| "not connected".to_string())?;
+    let session = {
+        let guard = state
+            .inner
+            .lock()
+            .map_err(|_| "session state lock poisoned".to_string())?;
+        guard
+            .session
+            .as_ref()
+            .ok_or_else(|| "not connected".to_string())?
+            .clone()
+    };
     session.prompt(text).await
 }
 
 #[tauri::command]
 async fn cancel_prompt(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let guard = state.inner.lock().await;
+    let guard = state.inner.lock().map_err(|_| "session state lock poisoned".to_string())?;
     let session = guard
         .session
         .as_ref()
@@ -130,11 +139,17 @@ async fn respond_permission(
     option_id: Option<String>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let guard = state.inner.lock().await;
-    let session = guard
-        .session
-        .as_ref()
-        .ok_or_else(|| "not connected".to_string())?;
+    let session = {
+        let guard = state
+            .inner
+            .lock()
+            .map_err(|_| "session state lock poisoned".to_string())?;
+        guard
+            .session
+            .as_ref()
+            .ok_or_else(|| "not connected".to_string())?
+            .clone()
+    };
     session.respond_permission(request_id, option_id).await
 }
 
@@ -151,7 +166,16 @@ fn set_fake_agent(enabled: bool) -> Result<AgentOverrideStatus, String> {
 #[tauri::command]
 async fn session_status(app: tauri::AppHandle) -> SessionStatus {
     let state = app.state::<AppState>();
-    let guard = state.inner.lock().await;
+    let Ok(guard) = state.inner.lock() else {
+        return SessionStatus {
+            connected: false,
+            cwd: None,
+            session_id: None,
+            busy: false,
+            error: Some("session state lock poisoned".into()),
+            load_session_supported: None,
+        };
+    };
     match &guard.session {
         Some(s) => SessionStatus {
             connected: true,
