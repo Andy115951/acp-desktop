@@ -8,7 +8,15 @@ import {
   isStalePermissionError,
   shouldDismissAskOnDisconnect,
 } from "../lib/permissionHotkey";
-import { isSessionLoadFailedError } from "../lib/sessionPrefs";
+import {
+  PREFS_KEY_LAST_CWD,
+  PREFS_KEY_SESSION_BY_CWD,
+  isPlausibleCwd,
+  isSessionLoadFailedError,
+  removeSessionByCwd,
+  upsertSessionByCwd,
+  type SessionByCwd,
+} from "../lib/sessionPrefs";
 
 export type StreamLine = {
   id: string;
@@ -23,10 +31,7 @@ export type PermissionRequest = {
   options: { id: string; name: string; kind: string }[];
 };
 
-type SessionPrefs = Record<string, string>; // cwd -> sessionId
-
 const PREFS_FILE = "prefs.json";
-const PREFS_KEY = "grok.sessionByCwd";
 
 let prefsStore: Store | null = null;
 
@@ -40,7 +45,7 @@ async function getPrefsStore(): Promise<Store> {
 async function loadSavedSessionId(cwd: string): Promise<string | null> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionPrefs>(PREFS_KEY)) ?? {};
+    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
     return map[cwd] ?? null;
   } catch {
     return null;
@@ -50,9 +55,11 @@ async function loadSavedSessionId(cwd: string): Promise<string | null> {
 async function saveSessionPrefs(cwd: string, sessionId: string): Promise<void> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionPrefs>(PREFS_KEY)) ?? {};
-    map[cwd] = sessionId;
-    await store.set(PREFS_KEY, map);
+    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
+    await store.set(
+      PREFS_KEY_SESSION_BY_CWD,
+      upsertSessionByCwd(map, cwd, sessionId),
+    );
     await store.save();
   } catch {
     // Prefs are best-effort; never block the session on store failure.
@@ -62,13 +69,33 @@ async function saveSessionPrefs(cwd: string, sessionId: string): Promise<void> {
 async function clearSavedSessionId(cwd: string): Promise<void> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionPrefs>(PREFS_KEY)) ?? {};
-    if (!(cwd in map)) return;
-    delete map[cwd];
-    await store.set(PREFS_KEY, map);
+    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
+    const next = removeSessionByCwd(map, cwd);
+    if (next === map) return;
+    await store.set(PREFS_KEY_SESSION_BY_CWD, next);
     await store.save();
   } catch {
     // Prefs are best-effort.
+  }
+}
+
+async function saveLastCwd(cwd: string): Promise<void> {
+  try {
+    const store = await getPrefsStore();
+    await store.set(PREFS_KEY_LAST_CWD, cwd);
+    await store.save();
+  } catch {
+    // Prefs are best-effort.
+  }
+}
+
+async function loadLastCwd(): Promise<string | null> {
+  try {
+    const store = await getPrefsStore();
+    const value = await store.get<unknown>(PREFS_KEY_LAST_CWD);
+    return isPlausibleCwd(value) ? value.trim() : null;
+  } catch {
+    return null;
   }
 }
 
@@ -85,6 +112,7 @@ type SessionState = {
   draft: string;
   setDraft: (v: string) => void;
   pickFolder: () => Promise<void>;
+  hydrateFromPrefs: () => Promise<void>;
   connect: (mode?: "new" | "resume") => Promise<void>;
   disconnect: () => Promise<void>;
   send: () => Promise<void>;
@@ -120,7 +148,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         sessionId: null,
         loadSessionSupported: null,
       });
+      void saveLastCwd(selected);
     }
+  },
+  hydrateFromPrefs: async () => {
+    // Best-effort restore so Resume/Connect work after relaunch.
+    if (get().cwd) return;
+    const lastCwd = await loadLastCwd();
+    if (!lastCwd) return;
+    const savedSessionId = await loadSavedSessionId(lastCwd);
+    // Bail if the user picked a folder while we were reading prefs.
+    if (get().cwd) return;
+    set({
+      cwd: lastCwd,
+      savedSessionId,
+      error: null,
+    });
   },
   connect: async (mode = "new") => {
     const cwd = get().cwd;
