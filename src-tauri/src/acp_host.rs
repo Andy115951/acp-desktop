@@ -684,7 +684,13 @@ fn content_block_text(block: &ContentBlock) -> String {
     }
 }
 
-fn emit_session_update(app: &AppHandle, update: &SessionUpdate) {
+/// Map an ACP `session/update` into a UI stream event, or `None` when the
+/// update is session metadata (commands / mode / config / info / usage) that
+/// must not appear as a chat bubble.
+///
+/// The previous catch-all used `Debug` formatting (`AvailableCommandsUpdate(...)`,
+/// etc.), which leaked raw enum dumps into the transcript.
+fn stream_event_for_session_update(update: &SessionUpdate) -> Option<StreamEvent> {
     let (kind, text) = match update {
         SessionUpdate::AgentMessageChunk(chunk) => {
             ("agent_message".into(), content_block_text(&chunk.content))
@@ -696,11 +702,54 @@ fn emit_session_update(app: &AppHandle, update: &SessionUpdate) {
             ("user_message".into(), content_block_text(&chunk.content))
         }
         SessionUpdate::ToolCall(tc) => ("tool_call".into(), tc.title.clone()),
-        SessionUpdate::ToolCallUpdate(u) => ("tool_call_update".into(), format!("{u:?}")),
-        SessionUpdate::Plan(p) => ("plan".into(), format!("{p:?}")),
-        other => ("other".into(), format!("{other:?}")),
+        SessionUpdate::ToolCallUpdate(u) => {
+            let status = u
+                .fields
+                .status
+                .as_ref()
+                .map(|s| format!("{s:?}"))
+                .unwrap_or_else(|| "updated".into());
+            let label = u
+                .fields
+                .title
+                .clone()
+                .unwrap_or_else(|| u.tool_call_id.0.to_string());
+            ("tool_call_update".into(), format!("{label} · {status}"))
+        }
+        SessionUpdate::Plan(p) => {
+            let n = p.entries.len();
+            let summary = if n == 0 {
+                "plan (empty)".into()
+            } else {
+                let first = p
+                    .entries
+                    .first()
+                    .map(|e| e.content.as_str())
+                    .unwrap_or("");
+                if n == 1 {
+                    format!("plan: {first}")
+                } else {
+                    format!("plan ({n} steps): {first}…")
+                }
+            };
+            ("plan".into(), summary)
+        }
+        // Non-chat session metadata — keep off the transcript entirely.
+        SessionUpdate::AvailableCommandsUpdate(_)
+        | SessionUpdate::CurrentModeUpdate(_)
+        | SessionUpdate::ConfigOptionUpdate(_)
+        | SessionUpdate::SessionInfoUpdate(_)
+        | SessionUpdate::UsageUpdate(_) => return None,
+        // `SessionUpdate` is non_exhaustive; never Debug-dump unknowns into chat.
+        _ => return None,
     };
-    let _ = app.emit("acp://stream", StreamEvent { kind, text });
+    Some(StreamEvent { kind, text })
+}
+
+fn emit_session_update(app: &AppHandle, update: &SessionUpdate) {
+    if let Some(event) = stream_event_for_session_update(update) {
+        let _ = app.emit("acp://stream", event);
+    }
 }
 
 /// Drain queued `session/load` replay updates into the UI, then return so
@@ -921,3 +970,92 @@ mod pending_permission_tests {
     }
 }
 
+
+#[cfg(test)]
+mod stream_event_mapping_tests {
+    use super::*;
+    use agent_client_protocol::schema::v1::{
+        AvailableCommandsUpdate, ContentChunk, CurrentModeUpdate, Plan, PlanEntry,
+        PlanEntryPriority, PlanEntryStatus, SessionInfoUpdate, SessionModeId, TextContent,
+        ToolCall, ToolCallId, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields, UsageUpdate,
+    };
+
+    #[test]
+    fn agent_message_chunk_emits_text() {
+        let update = SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+            TextContent::new("hello"),
+        )));
+        let ev = stream_event_for_session_update(&update).expect("emit");
+        assert_eq!(ev.kind, "agent_message");
+        assert_eq!(ev.text, "hello");
+    }
+
+    #[test]
+    fn available_commands_update_is_filtered() {
+        let update =
+            SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![]));
+        assert!(
+            stream_event_for_session_update(&update).is_none(),
+            "AvailableCommandsUpdate must not become a chat bubble"
+        );
+    }
+
+    #[test]
+    fn other_metadata_updates_are_filtered() {
+        let cases = [
+            SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new("default"))),
+            SessionUpdate::SessionInfoUpdate(SessionInfoUpdate::new()),
+            SessionUpdate::UsageUpdate(UsageUpdate::new(1, 2)),
+        ];
+        for update in cases {
+            assert!(
+                stream_event_for_session_update(&update).is_none(),
+                "metadata update must not leak: {update:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tool_call_update_is_compact_not_debug_dump() {
+        let update = SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+            ToolCallId::new("tc-1"),
+            ToolCallUpdateFields::new()
+                .title("Read file")
+                .status(ToolCallStatus::Completed),
+        ));
+        let ev = stream_event_for_session_update(&update).expect("emit");
+        assert_eq!(ev.kind, "tool_call_update");
+        assert!(ev.text.contains("Read file"), "{}", ev.text);
+        assert!(ev.text.contains("Completed"), "{}", ev.text);
+        assert!(
+            !ev.text.contains("ToolCallUpdate"),
+            "must not Debug-dump the whole update: {}",
+            ev.text
+        );
+    }
+
+    #[test]
+    fn tool_call_emits_title() {
+        let update = SessionUpdate::ToolCall(ToolCall::new(ToolCallId::new("tc-2"), "Shell"));
+        let ev = stream_event_for_session_update(&update).expect("emit");
+        assert_eq!(ev.kind, "tool_call");
+        assert_eq!(ev.text, "Shell");
+    }
+
+    #[test]
+    fn plan_is_compact_summary() {
+        let update = SessionUpdate::Plan(Plan::new(vec![PlanEntry::new(
+            "step one",
+            PlanEntryPriority::Medium,
+            PlanEntryStatus::Pending,
+        )]));
+        let ev = stream_event_for_session_update(&update).expect("emit");
+        assert_eq!(ev.kind, "plan");
+        assert!(ev.text.contains("step one"), "{}", ev.text);
+        assert!(
+            !ev.text.starts_with("Plan "),
+            "must not Debug-dump Plan: {}",
+            ev.text
+        );
+    }
+}
