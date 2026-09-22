@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:fake": "cargo build -p fake-acp-agent && ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke:codex-acp": "node scripts/smoke-codex-acp-initialize.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

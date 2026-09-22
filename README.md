@@ -64,6 +64,14 @@ npm install
 npm run tauri dev
 ```
 
+### Codex ACP headless initialize (Mac)
+
+Spawns the same argv as `CodexBackend` (`codex-acp` if on `PATH`, else `npx -y @agentclientprotocol/codex-acp`), sends ACP `initialize` over stdio NDJSON, and asserts `protocolVersion: 1`, `loadSession`, and `authMethods` (`api-key`, `chat-gpt`). Does not replace Mac UI Connect/Ask/Resume.
+
+```bash
+npm run smoke:codex-acp
+```
+
 ### Fake ACP agent (permission smoke)
 
 Grok may not emit `session/request_permission` for every prompt. For a deterministic allow/deny path:
