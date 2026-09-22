@@ -421,6 +421,25 @@ fn looks_like_auth_failure(raw: &str) -> bool {
     .any(|k| lower.contains(k))
 }
 
+/// Codex / OpenAI quota or plan limits (seen on Mac prompt as usageLimitExceeded).
+/// Must win over auth/spawn: rate-limit bodies often include "403" / "not found".
+fn looks_like_usage_limit(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    [
+        "usagelimitexceeded",
+        "usage_limit",
+        "usage limit",
+        "rate limit",
+        "ratelimit",
+        "quota exceeded",
+        "quota_exceeded",
+        "too many requests",
+        "429",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
+}
+
 fn looks_like_spawn_failure(raw: &str) -> bool {
     let lower = raw.to_ascii_lowercase();
     [
@@ -448,7 +467,10 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
         return raw.to_string();
     }
     // Avoid stacking the same hint if we already enriched once.
-    if raw.contains("Codex auth:") || raw.contains("Codex ACP:") {
+    if raw.contains("Codex auth:")
+        || raw.contains("Codex ACP:")
+        || raw.contains("Codex usage:")
+    {
         return raw.to_string();
     }
     // Stale Resume / missing session file — not a spawn/auth problem.
@@ -457,18 +479,20 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
         return raw.to_string();
     }
     match agent_id.trim() {
+        // Quota / plan limits are not install or auth failures (Mac prompt path).
+        "codex" if looks_like_usage_limit(raw) => format!(
+            "{raw}\n\nCodex usage: plan or rate limit hit — wait and retry, or check              Codex / ChatGPT usage. This is not a missing `codex-acp` install or login."
+        ),
         "codex" if looks_like_auth_failure(raw) => format!(
-            "{raw}\n\nCodex auth: sign in via the local `codex` CLI (ChatGPT), \
-             or set `CODEX_API_KEY` / `OPENAI_API_KEY` in the environment, then retry Connect."
+            "{raw}\n\nCodex auth: sign in via the local `codex` CLI (ChatGPT),              or set `CODEX_API_KEY` / `OPENAI_API_KEY` in the environment, then retry Connect."
         ),
         "codex" if looks_like_spawn_failure(raw) => format!(
-            "{raw}\n\nCodex ACP: install `codex-acp` (`npm i -g @agentclientprotocol/codex-acp`) \
-             or ensure `npx`/`node` is on PATH. Detect also accepts a local `codex` binary."
+            "{raw}\n\nCodex ACP: install `codex-acp` (`npm i -g @agentclientprotocol/codex-acp`)              or ensure `npx`/`node` is on PATH. Detect also accepts a local `codex` binary."
         ),
+        // Prompt/turn errors are not Connect preflight — do not suggest install/auth.
+        "codex" if raw.to_ascii_lowercase().contains("prompt failed") => raw.to_string(),
         "codex" => format!(
-            "{raw}\n\nIf this looks like missing install or auth: install `codex`/`codex-acp`, \
-             complete ChatGPT login in the Codex CLI (or set `CODEX_API_KEY` / `OPENAI_API_KEY`), \
-             then retry Connect."
+            "{raw}\n\nIf this looks like missing install or auth: install `codex`/`codex-acp`,              complete ChatGPT login in the Codex CLI (or set `CODEX_API_KEY` / `OPENAI_API_KEY`),              then retry Connect."
         ),
         _ => raw.to_string(),
     }
@@ -601,6 +625,36 @@ mod tests {
     fn enrich_connect_error_noop_for_grok() {
         let raw = "something broke";
         assert_eq!(enrich_connect_error("grok", raw), raw);
+    }
+
+    #[test]
+    fn enrich_connect_error_codex_usage_limit_not_auth() {
+        let raw = "prompt failed: usageLimitExceeded";
+        let out = enrich_connect_error("codex", raw);
+        assert!(out.starts_with("prompt failed"), "{out}");
+        assert!(out.contains("Codex usage:"), "{out}");
+        assert!(!out.contains("Codex auth:"), "{out}");
+        assert!(!out.contains("Codex ACP:"), "{out}");
+        assert!(!out.contains("missing install or auth"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_usage_wins_over_403_auth_keyword() {
+        // Rate-limit payloads sometimes include 403; must not get auth hint.
+        let raw = "prompt failed: 403 usageLimitExceeded";
+        let out = enrich_connect_error("codex", raw);
+        assert!(out.contains("Codex usage:"), "{out}");
+        assert!(!out.contains("Codex auth:"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_prompt_failed_skips_generic_install_hint() {
+        let raw = "prompt failed: model refused";
+        let out = enrich_connect_error("codex", raw);
+        assert_eq!(
+            out, raw,
+            "non-quota prompt errors must not get Connect install/auth hint"
+        );
     }
 
     #[test]

@@ -65,3 +65,11 @@ export function canConnectSelectedAgent(
 ): boolean {
   return !!connectable && (!!available || usingFake);
 }
+
+/**
+ * Clear button: drop transcript and dismiss the error banner so
+ * Clear→Connect after a stale Resume / failed turn is uncluttered.
+ */
+export function sessionPatchAfterClear(): { lines: []; error: null } {
+  return { lines: [], error: null };
+}

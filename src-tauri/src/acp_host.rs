@@ -327,6 +327,7 @@ impl AcpSession {
                             let cwd_for_inner = cwd_for_task.clone();
                             let resume_for_task = resume_for_task.clone();
                             let pending_for_cmds = pending_for_cmds.clone();
+                            let agent_id_for_prompt = agent_id_for_task.clone();
                             move |connection: ConnectionTo<Agent>| {
                             let mut cmd_rx = cmd_rx;
                             let session_id = session_id_for_task;
@@ -335,6 +336,7 @@ impl AcpSession {
                             let resume_id = resume_for_task;
                             let pending_perms = pending_for_cmds;
                             let ready_for_thread = ready_for_connect;
+                            let agent_id_for_prompt = agent_id_for_prompt;
                             async move {
                                 let init = connection
                                     .send_request(InitializeRequest::new(ProtocolVersion::V1))
@@ -498,7 +500,10 @@ impl AcpSession {
                                                 .await;
                                             let mapped = match result {
                                                 Ok(r) => Ok(format!("{:?}", r.stop_reason)),
-                                                Err(e) => Err(format!("prompt failed: {e}")),
+                                                Err(e) => Err(enrich_connect_error(
+                                                    &agent_id_for_prompt,
+                                                    &format!("prompt failed: {e}"),
+                                                )),
                                             };
                                             let _ = reply.send(mapped);
                                             let _ = app.emit(

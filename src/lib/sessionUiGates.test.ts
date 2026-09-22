@@ -3,6 +3,7 @@ import {
   canCancelPrompt,
   canConnectNewSession,
   canConnectSelectedAgent,
+  sessionPatchAfterClear,
   canResumeSession,
   canSendPrompt,
   draftEnterShouldSend,
@@ -104,5 +105,11 @@ describe("canConnectSelectedAgent (fake + missing Codex)", () => {
   it("blocks non-connectable placeholders even with fake", () => {
     expect(canConnectSelectedAgent(false, false, true)).toBe(false);
     expect(canConnectSelectedAgent(undefined, undefined, true)).toBe(false);
+  });
+});
+
+describe("sessionPatchAfterClear", () => {
+  it("clears transcript and dismisses error for Clear→Connect", () => {
+    expect(sessionPatchAfterClear()).toEqual({ lines: [], error: null });
   });
 });

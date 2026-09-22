@@ -20,6 +20,8 @@ import {
   upsertSessionByCwd,
   type SessionByCwd,
 } from "../lib/sessionPrefs";
+import { sessionPatchAfterClear } from "../lib/sessionUiGates";
+
 import {
   resumeIdAfterAgentMayHaveFlipped,
   resumeIdForAgent,
@@ -157,7 +159,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   permission: null,
   draft: "",
   setDraft: (v) => set({ draft: v }),
-  clearTranscript: () => set({ lines: [] }),
+  clearTranscript: () => set(sessionPatchAfterClear()),
   pickFolder: async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
