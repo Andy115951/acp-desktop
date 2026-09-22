@@ -187,10 +187,8 @@ pub fn run() {
 mod tests {
     use super::*;
     use agent_backend::{resolve_default_agent_command, GrokBackend};
-    use std::sync::Mutex;
-
-    // Serialize env-mutating tests (cargo may run test threads in parallel).
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    // Serialize env-mutating tests with agent_backend (same process env).
+    use crate::agent_backend::TEST_ENV_LOCK as ENV_LOCK;
 
     #[test]
     fn detect_agents_includes_grok_and_codex_connectable() {

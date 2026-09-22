@@ -74,20 +74,50 @@ impl AgentBackend for CodexBackend {
     }
 
     fn detect(&self) -> bool {
-        binary_named_on_path("codex-acp") || binary_named_on_path("codex")
+        codex_is_detectable(
+            binary_named_on_path("codex-acp"),
+            binary_named_on_path("codex"),
+        )
     }
 
     fn default_argv(&self) -> Vec<String> {
-        if binary_named_on_path("codex-acp") {
-            vec!["codex-acp".into()]
-        } else {
-            // Official published adapter; first run may download via npm.
-            vec![
-                "npx".into(),
-                "-y".into(),
-                "@agentclientprotocol/codex-acp".into(),
-            ]
-        }
+        codex_spawn_argv(binary_named_on_path("codex-acp"))
+    }
+}
+
+/// Pure detect rule: `codex-acp` **or** local `codex` CLI.
+pub fn codex_is_detectable(has_codex_acp: bool, has_codex: bool) -> bool {
+    has_codex_acp || has_codex
+}
+
+/// Pure spawn argv: prefer global `codex-acp`, else `npx -y` published adapter.
+///
+/// Common Mac state: `codex` on PATH but no `codex-acp` → Connect uses npx
+/// (first run may download). Callers pass the `codex-acp` probe result only;
+/// detect may still be true via `codex` alone.
+pub fn codex_spawn_argv(has_codex_acp: bool) -> Vec<String> {
+    if has_codex_acp {
+        vec!["codex-acp".into()]
+    } else {
+        vec![
+            "npx".into(),
+            "-y".into(),
+            "@agentclientprotocol/codex-acp".into(),
+        ]
+    }
+}
+
+/// Agents-list detail when Codex is available only via `codex` (npx spawn).
+pub fn codex_availability_detail(has_codex_acp: bool, has_codex: bool) -> Option<String> {
+    if has_codex_acp {
+        None
+    } else if has_codex {
+        Some(
+            "codex on PATH; Connect spawns via npx (@agentclientprotocol/codex-acp).              Install `codex-acp` globally to skip the download."
+                .into(),
+        )
+    } else {
+        None
     }
 }
 
@@ -157,6 +187,9 @@ pub struct AgentInfo {
     pub available: bool,
     /// Host can `connect_agent` this id (false for unwired placeholders).
     pub connectable: bool,
+    /// Optional Agents-list note (e.g. Codex npx fallback when only `codex` is present).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 pub fn detect_builtin_agents() -> Vec<AgentInfo> {
@@ -168,12 +201,21 @@ pub fn detect_builtin_agents() -> Vec<AgentInfo> {
             } else {
                 (binary_named_on_path(entry.binary), entry.name)
             };
+            let detail = if entry.id == "codex" {
+                codex_availability_detail(
+                    binary_named_on_path("codex-acp"),
+                    binary_named_on_path("codex"),
+                )
+            } else {
+                None
+            };
             AgentInfo {
                 id: entry.id.to_string(),
                 name: name.to_string(),
                 binary: entry.binary.to_string(),
                 available,
                 connectable: entry.backend.is_some(),
+                detail,
             }
         })
         .collect()
@@ -427,12 +469,15 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
     }
 }
 
+/// Shared across crates' unit tests that mutate process env (see `lib` tests).
+#[cfg(test)]
+pub static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    use super::TEST_ENV_LOCK as ENV_LOCK;
 
     #[test]
     fn builtin_table_lists_grok_and_codex_connectable() {
@@ -543,6 +588,54 @@ mod tests {
     fn enrich_connect_error_noop_for_grok() {
         let raw = "something broke";
         assert_eq!(enrich_connect_error("grok", raw), raw);
+    }
+
+    #[test]
+    fn codex_spawn_argv_prefers_binary_when_present() {
+        assert_eq!(codex_spawn_argv(true), vec!["codex-acp".to_string()]);
+    }
+
+    #[test]
+    fn codex_spawn_argv_falls_back_to_npx() {
+        assert_eq!(
+            codex_spawn_argv(false),
+            vec![
+                "npx".to_string(),
+                "-y".to_string(),
+                "@agentclientprotocol/codex-acp".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn codex_is_detectable_via_codex_alone() {
+        // Common Mac: `codex` installed, `codex-acp` not on PATH.
+        assert!(codex_is_detectable(false, true));
+        assert!(codex_is_detectable(true, false));
+        assert!(codex_is_detectable(true, true));
+        assert!(!codex_is_detectable(false, false));
+    }
+
+    #[test]
+    fn codex_availability_detail_npx_when_only_codex() {
+        let d = codex_availability_detail(false, true).expect("detail");
+        assert!(d.contains("npx"), "{d}");
+        assert!(d.contains("codex-acp"), "{d}");
+        assert!(codex_availability_detail(true, true).is_none());
+        assert!(codex_availability_detail(true, false).is_none());
+        assert!(codex_availability_detail(false, false).is_none());
+    }
+
+    #[test]
+    fn resolve_codex_uses_spawn_helper_without_override() {
+        let _g = ENV_LOCK.lock().unwrap();
+        env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+        let argv = resolve_agent_command(&CODEX_BACKEND).unwrap();
+        assert!(
+            argv == codex_spawn_argv(true) || argv == codex_spawn_argv(false),
+            "unexpected codex resolve argv: {argv:?}"
+        );
     }
 
 }

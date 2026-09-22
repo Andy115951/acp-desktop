@@ -14,6 +14,8 @@ export type AgentInfo = {
   available: boolean;
   /** Host can connect_agent this id (false for unwired placeholders). */
   connectable: boolean;
+  /** Optional host note (e.g. Codex npx fallback when only `codex` is on PATH). */
+  detail?: string | null;
 };
 
 export type AgentOverride = {

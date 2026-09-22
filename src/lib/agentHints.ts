@@ -20,3 +20,15 @@ export function agentAuthHint(
       return null;
   }
 }
+
+/**
+ * Extra note when host reports Codex available only via `codex` (npx spawn).
+ * Prefer showing `AgentInfo.detail` from the host when present.
+ */
+export function agentCodexNpxFallbackHint(detail: string | null | undefined): string | null {
+  if (!detail) return null;
+  const lower = detail.toLowerCase();
+  if (lower.includes("npx") && lower.includes("codex")) return detail;
+  return null;
+}
+

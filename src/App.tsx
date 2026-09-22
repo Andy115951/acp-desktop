@@ -219,6 +219,11 @@ export default function App() {
                     <p className="pl-4 text-xs text-slate-500">
                       <code>{agent.binary}</code>
                     </p>
+                    {agent.detail ? (
+                      <p className="pl-4 pt-0.5 text-xs text-amber-200/80">
+                        {agent.detail}
+                      </p>
+                    ) : null}
                   </div>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs ${
