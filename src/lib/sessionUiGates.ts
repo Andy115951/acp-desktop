@@ -52,3 +52,16 @@ export function draftEnterShouldSend(
   if (permissionOpen) return false;
   return key === "Enter" && !shiftKey;
 }
+
+/**
+ * Connect enablement for the selected built-in agent.
+ * Fake/custom override may Connect even when PATH detect is false
+ * (Linux `tauri:fake` Switch→Codex while both CLIs are missing).
+ */
+export function canConnectSelectedAgent(
+  connectable: boolean | undefined,
+  available: boolean | undefined,
+  usingFake: boolean,
+): boolean {
+  return !!connectable && (!!available || usingFake);
+}

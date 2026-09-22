@@ -113,6 +113,7 @@ ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
 
 ### Still open
 
+- M4 Mac UI E2E: real Codex Connect / Ask / Resume (PR #12; Linux `tauri:fake` covers Switch hydrate + fake override)
 - Third agent: Claude Code (`claude-agent-acp`) — listed, not wired
 - Permission card: modal vs inline in the chat thread
 

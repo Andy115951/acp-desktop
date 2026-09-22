@@ -3,6 +3,7 @@ import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
   canConnectNewSession,
+  canConnectSelectedAgent,
   canResumeSession,
   canSendPrompt,
   draftEnterShouldSend,
@@ -102,8 +103,11 @@ export default function App() {
 
   const selected = agents.find((a) => a.id === selectedAgentId);
   const usingFake = !!override?.usingOverride;
-  const canConnectAgent =
-    !!selected?.connectable && (!!selected?.available || usingFake);
+  const canConnectAgent = canConnectSelectedAgent(
+    selected?.connectable,
+    selected?.available,
+    usingFake,
+  );
   const uiGates = {
     cwd,
     connected,

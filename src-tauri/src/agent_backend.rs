@@ -113,7 +113,7 @@ pub fn codex_availability_detail(has_codex_acp: bool, has_codex: bool) -> Option
         None
     } else if has_codex {
         Some(
-            "codex on PATH; Connect spawns via npx (@agentclientprotocol/codex-acp).              Install `codex-acp` globally to skip the download."
+            "codex on PATH; Connect spawns via npx (@agentclientprotocol/codex-acp). Install `codex-acp` globally to skip the download."
                 .into(),
         )
     } else {
@@ -636,6 +636,21 @@ mod tests {
             argv == codex_spawn_argv(true) || argv == codex_spawn_argv(false),
             "unexpected codex resolve argv: {argv:?}"
         );
+    }
+
+    #[test]
+    fn resolve_codex_respects_fake_override() {
+        // Switch→Codex with tauri:fake must still spawn fake-acp-agent, not npx/codex-acp.
+        let _g = ENV_LOCK.lock().unwrap();
+        env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
+        let argv = resolve_agent_command(&CODEX_BACKEND).expect("fake resolves for Codex");
+        assert!(
+            argv[0].ends_with("fake-acp-agent") || argv[0].ends_with("fake-acp-agent.exe"),
+            "unexpected fake argv for Codex: {argv:?}"
+        );
+        assert!(using_override_agent());
+        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
     }
 
 }
