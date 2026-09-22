@@ -64,12 +64,17 @@ npm install
 npm run tauri dev
 ```
 
-### Codex ACP headless initialize (Mac)
+### Codex ACP headless Connect/Ask/Resume (Mac)
 
-Spawns the same argv as `CodexBackend` (`codex-acp` if on `PATH`, else `npx -y @agentclientprotocol/codex-acp`), sends ACP `initialize` over stdio NDJSON, and asserts `protocolVersion: 1`, `loadSession`, and `authMethods` (`api-key`, `chat-gpt`). Does not replace Mac UI Connect/Ask/Resume.
+Spawns the same argv as `CodexBackend` (`codex-acp` if on `PATH`, else `npx -y @agentclientprotocol/codex-acp`), then over stdio NDJSON runs:
+
+`initialize` → `session/new` → `session/prompt` → fresh-process `session/load`
+
+Asserts `protocolVersion: 1`, `loadSession`, `authMethods` (`api-key`, `chat-gpt`), a usable `sessionId`, prompt `end_turn`, and Resume replay chunks. Needs a local Codex login (ChatGPT / API key). Does **not** replace Mac UI Connect/Ask/Resume clicks.
 
 ```bash
 npm run smoke:codex-acp
+# optional: CODEX_ACP_SMOKE_SKIP_PROMPT=1 npm run smoke:codex-acp
 ```
 
 ### Fake ACP agent (permission smoke)
