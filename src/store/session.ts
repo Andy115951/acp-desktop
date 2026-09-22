@@ -13,8 +13,10 @@ import {
   PREFS_KEY_LAST_CWD,
   isPlausibleCwd,
   isSessionLoadFailedError,
+  recoverableSessionLoadMessage,
   removeSessionByCwd,
   sessionPrefsKey,
+  shouldPersistConnectedSessionId,
   upsertSessionByCwd,
   type SessionByCwd,
 } from "../lib/sessionPrefs";
@@ -277,10 +279,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // connected / sessionId / replay lines come from acp://status + acp://stream
       set({ busy: false });
     } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      // Invoke rejection path: status may also fire, but always drop a dead
+      // Resume id here so the button cannot retry the same stale session.
+      if (isSessionLoadFailedError(raw) && cwd) {
+        const agentId = currentAgentId();
+        void clearSavedSessionId(agentId, cwd);
+        set({
+          connected: false,
+          busy: false,
+          savedSessionId: null,
+          error: recoverableSessionLoadMessage(raw),
+        });
+        return;
+      }
       set({
         connected: false,
         busy: false,
-        error: e instanceof Error ? e.message : String(e),
+        error: raw,
       });
     }
   },
@@ -410,11 +426,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const loadSessionSupported =
           ev.payload.loadSessionSupported ?? get().loadSessionSupported;
 
+        // Persist only after handshake completes (!busy). Mid-Resume status
+        // used to emit sessionId while busy and re-save a dead id over clear.
         if (
-          ev.payload.connected &&
-          sessionId &&
+          shouldPersistConnectedSessionId({
+            connected: !!ev.payload.connected,
+            sessionId,
+            busy: !!ev.payload.busy,
+            error: ev.payload.error,
+          }) &&
           cwd &&
-          !ev.payload.error
+          sessionId
         ) {
           const agentId = currentAgentId();
           void saveSessionPrefs(agentId, cwd, sessionId).then(() => {
@@ -423,9 +445,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         }
 
         // Corrupt / unknown resume id: drop the stale prefs entry so Resume
-        // does not keep failing; New session remains available.
+        // does not keep failing; Connect (New session) remains available.
         const loadFailed =
           !!ev.payload.error && isSessionLoadFailedError(ev.payload.error);
+        const statusError = loadFailed
+          ? recoverableSessionLoadMessage(ev.payload.error!)
+          : (ev.payload.error ?? null);
         if (loadFailed && cwd) {
           const agentId = currentAgentId();
           void clearSavedSessionId(agentId, cwd).then(() => {
@@ -438,7 +463,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           cwd: cwd ?? get().cwd,
           sessionId: sessionId ?? (ev.payload.connected ? get().sessionId : null),
           busy: ev.payload.busy,
-          error: ev.payload.error ?? null,
+          error: statusError,
           loadSessionSupported,
           // Agent exit / Disconnect via status: drop stale Ask so Allow cannot
           // hit a torn-down oneshot after the modal was left open.

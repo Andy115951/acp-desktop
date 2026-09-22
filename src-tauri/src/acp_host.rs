@@ -378,12 +378,15 @@ impl AcpSession {
                                         );
                                     }
 
+                                    // Do NOT emit session_id until load succeeds. Emitting the
+                                    // saved id while busy caused the UI to re-persist a dead
+                                    // Resume id over the clear-on-failure path (FS_NOT_FOUND).
                                     let _ = app.emit(
                                         "acp://status",
                                         SessionStatus {
                                             connected: true,
                                             cwd: Some(cwd.display().to_string()),
-                                            session_id: Some(saved_id.clone()),
+                                            session_id: None,
                                             busy: true,
                                             error: None,
                                             load_session_supported: Some(true),
@@ -402,8 +405,10 @@ impl AcpSession {
                                     {
                                         Ok(r) => r,
                                         Err(e) => {
+                                            // Keep "session/load failed" prefix for UI matchers;
+                                            // point users at Connect rather than raw FS_NOT_FOUND.
                                             let msg = format!(
-                                                "session/load failed: {e}. You can start a New session."
+                                                "session/load failed: {e}. Saved session is missing or expired — use Connect (New session)."
                                             );
                                             let _ = app.emit(
                                                 "acp://status",

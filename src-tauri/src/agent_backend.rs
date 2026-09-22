@@ -451,6 +451,11 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
     if raw.contains("Codex auth:") || raw.contains("Codex ACP:") {
         return raw.to_string();
     }
+    // Stale Resume / missing session file — not a spawn/auth problem.
+    // "not found" / FS_NOT_FOUND would otherwise match looks_like_spawn_failure.
+    if raw.to_ascii_lowercase().contains("session/load failed") {
+        return raw.to_string();
+    }
     match agent_id.trim() {
         "codex" if looks_like_auth_failure(raw) => format!(
             "{raw}\n\nCodex auth: sign in via the local `codex` CLI (ChatGPT), \
@@ -582,6 +587,14 @@ mod tests {
         let raw = "session/load failed: unknown id. You can start a New session.";
         let out = enrich_connect_error("codex", raw);
         assert!(out.starts_with("session/load failed"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_skips_spawn_hint_for_fs_not_found_load() {
+        let raw = "session/load failed: FS_NOT_FOUND. Saved session is missing or expired — use Connect (New session).";
+        let out = enrich_connect_error("codex", raw);
+        assert_eq!(out, raw, "must not append Codex ACP spawn hint");
+        assert!(!out.contains("Codex ACP:"), "{out}");
     }
 
     #[test]

@@ -20,9 +20,61 @@ export function sessionPrefsKey(agentId: string): string {
   return `${id}.sessionByCwd`;
 }
 
-/** Host error from a failed `session/load` (corrupt / unknown saved id). */
+/**
+ * Host / agent errors that mean the saved Resume id is dead
+ * (`session/load` not-found, FS_NOT_FOUND, unknown id, …).
+ */
 export function isSessionLoadFailedError(message: string): boolean {
-  return /session\/load failed/i.test(message);
+  const text = message ?? "";
+  if (/session\/load\s*failed/i.test(text)) return true;
+  // Raw ACP / filesystem codes sometimes surface without the host prefix
+  // (invoke wrap, agent stderr leak, or status race). Treat as stale Resume.
+  if (/FS_NOT_FOUND/i.test(text)) return true;
+  if (/ENOENT/i.test(text) && /session/i.test(text)) return true;
+  if (/no such session/i.test(text)) return true;
+  if (/no such file/i.test(text) && /session/i.test(text)) return true;
+  if (/unknown (session )?id/i.test(text)) return true;
+  if (/session\s+(not found|missing|does not exist|expired)/i.test(text)) {
+    return true;
+  }
+  if (/missing session/i.test(text)) return true;
+  return false;
+}
+
+/** Clear UI message when Resume id is gone — points user to Connect. */
+export const STALE_RESUME_USER_MESSAGE =
+  "Saved session is no longer available (missing or expired). Resume was cleared — use Connect (New session).";
+
+/**
+ * Prefer a recoverable Connect hint over raw FS_NOT_FOUND / ACP codes when
+ * the error is a stale `session/load`. Unrelated errors pass through.
+ */
+export function recoverableSessionLoadMessage(raw: string): string {
+  if (!isSessionLoadFailedError(raw)) return raw;
+  // Keep host prefix so logs / matchers still see session/load failed.
+  if (/session\/load\s*failed/i.test(raw)) {
+    return `${STALE_RESUME_USER_MESSAGE} (was: ${raw.split("\n")[0]})`;
+  }
+  return `${STALE_RESUME_USER_MESSAGE} (was: ${raw.split("\n")[0]})`;
+}
+
+/**
+ * Only persist cwd→sessionId after handshake completes.
+ * Emitting `session_id` while Resume is still loading (`busy`) must NOT
+ * re-write prefs — that raced clear-on-load-failure and restored dead ids.
+ */
+export function shouldPersistConnectedSessionId(opts: {
+  connected: boolean;
+  sessionId: string | null | undefined;
+  busy: boolean;
+  error?: string | null;
+}): boolean {
+  return (
+    !!opts.connected &&
+    !!opts.sessionId &&
+    !opts.busy &&
+    !opts.error
+  );
 }
 
 /**
