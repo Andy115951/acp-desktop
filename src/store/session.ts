@@ -19,6 +19,10 @@ import {
   upsertSessionByCwd,
   type SessionByCwd,
 } from "../lib/sessionPrefs";
+import {
+  resumeIdForAgent,
+  sessionPatchAfterAgentSwitch,
+} from "../lib/agentSwitch";
 
 export type StreamLine = {
   id: string;
@@ -50,23 +54,13 @@ async function loadSavedSessionId(
 ): Promise<string | null> {
   try {
     const store = await getPrefsStore();
-    const key = sessionPrefsKey(agentId);
-    let map = (await store.get<SessionByCwd>(key)) ?? {};
-    // Migrate legacy Grok-only key once into grok.sessionByCwd.
-    if (
-      Object.keys(map).length === 0 &&
-      agentId === "grok" &&
-      key !== PREFS_KEY_SESSION_BY_CWD
-    ) {
-      map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
-    } else if (
-      Object.keys(map).length === 0 &&
-      agentId === "grok" &&
-      key === PREFS_KEY_SESSION_BY_CWD
-    ) {
-      // key is already the legacy name — nothing else to try.
+    // Prefetch maps the pure helper may touch (per-agent + legacy grok key).
+    const keys = new Set([sessionPrefsKey(agentId), PREFS_KEY_SESSION_BY_CWD]);
+    const cache: Record<string, SessionByCwd> = {};
+    for (const key of keys) {
+      cache[key] = (await store.get<SessionByCwd>(key)) ?? {};
     }
-    return map[cwd] ?? null;
+    return resumeIdForAgent(agentId, cwd, (key) => cache[key]);
   } catch {
     return null;
   }
@@ -204,14 +198,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const savedSessionId = cwd
       ? await loadSavedSessionId(agentId, cwd)
       : null;
-    set({
-      savedSessionId,
-      sessionId: null,
-      loadSessionSupported: null,
-      lines: [],
-      error: null,
-      permission: null,
-    });
+    set(sessionPatchAfterAgentSwitch(savedSessionId));
   },
   connect: async (mode = "new") => {
     const cwd = get().cwd;

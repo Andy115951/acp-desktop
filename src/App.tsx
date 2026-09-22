@@ -8,6 +8,7 @@ import {
   draftEnterShouldSend,
 } from "./lib/sessionUiGates";
 import { agentAuthHint } from "./lib/agentHints";
+import { shouldDisconnectOnAgentSwitch } from "./lib/agentSwitch";
 import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
 
@@ -60,7 +61,7 @@ export default function App() {
     prevAgentRef.current = selectedAgentId;
     const run = async () => {
       const session = useSessionStore.getState();
-      if (session.connected || session.busy) {
+      if (shouldDisconnectOnAgentSwitch(session.connected, session.busy)) {
         await session.disconnect();
       }
       await session.reloadForAgent(selectedAgentId);

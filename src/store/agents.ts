@@ -2,6 +2,10 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { Store } from "@tauri-apps/plugin-store";
 import { PREFS_KEY_SELECTED_AGENT } from "../lib/sessionPrefs";
+import {
+  canSelectAgentId,
+  pickConnectableAgentId,
+} from "../lib/agentSwitch";
 
 export type AgentInfo = {
   id: string;
@@ -76,14 +80,11 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
         loadSelectedAgentId(),
       ]);
       const preferred = savedId ?? get().selectedAgentId;
-      const connectable =
-        agents.find((a) => a.id === preferred && a.connectable) ??
-        agents.find((a) => a.connectable);
       set({
         agents,
         override,
         loading: false,
-        selectedAgentId: connectable?.id ?? "grok",
+        selectedAgentId: pickConnectableAgentId(agents, preferred),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -91,9 +92,8 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     }
   },
   selectAgent: (id) => {
-    const agent = get().agents.find((a) => a.id === id);
     // Only select connectable agents (or leave selection if list empty / unknown).
-    if (agent && !agent.connectable) return;
+    if (!canSelectAgentId(get().agents, id)) return;
     if (get().selectedAgentId === id) return;
     set({ selectedAgentId: id });
     void saveSelectedAgentId(id);
