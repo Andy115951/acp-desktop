@@ -7,8 +7,8 @@ export const PREFS_KEY_LAST_CWD = "lastCwd";
 export const PREFS_KEY_SELECTED_AGENT = "selectedAgentId";
 
 /**
- * Legacy Grok-only key (M2). Kept for migration: first read of `grok` still
- * falls back to this if the per-agent key is empty.
+ * Grok per-vendor map key (M2+). Same string as `sessionPrefsKey("grok")` —
+ * kept as a named constant for tests and call sites that mean “Grok’s map”.
  */
 export const PREFS_KEY_SESSION_BY_CWD = "grok.sessionByCwd";
 

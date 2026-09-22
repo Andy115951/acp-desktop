@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canSelectAgentId,
   pickConnectableAgentId,
+  resumeIdAfterAgentMayHaveFlipped,
   resumeIdForAgent,
   sessionPatchAfterAgentSwitch,
   shouldDisconnectOnAgentSwitch,
@@ -64,13 +65,40 @@ describe("resumeIdForAgent — no cross-vendor bleed", () => {
     expect(resumeIdForAgent("codex", "/other", getMap)).toBeNull();
   });
 
-  it("grok reads grok.sessionByCwd; codex never reads the grok map", () => {
-    const legacyOnly: Record<string, SessionByCwd> = {
+  it("empty maps / missing keys yield null (incl. fake+Codex with no prefs)", () => {
+    const empty = (key: string) =>
+      key === "codex.sessionByCwd" ? {} : undefined;
+    expect(resumeIdForAgent("codex", cwd, empty)).toBeNull();
+    expect(resumeIdForAgent("grok", cwd, () => null)).toBeNull();
+    expect(resumeIdForAgent("grok", cwd, () => undefined)).toBeNull();
+  });
+
+  it("grok and codex never share a map even when only grok has an entry", () => {
+    const grokOnly: Record<string, SessionByCwd> = {
       "grok.sessionByCwd": { [cwd]: "legacy-grok" },
     };
-    const get = (key: string) => legacyOnly[key];
+    const get = (key: string) => grokOnly[key];
     expect(resumeIdForAgent("grok", cwd, get)).toBe("legacy-grok");
     expect(resumeIdForAgent("codex", cwd, get)).toBeNull();
+  });
+});
+
+describe("resumeIdAfterAgentMayHaveFlipped (hydrate vs detect race)", () => {
+  it("keeps loaded id when agent unchanged", () => {
+    expect(
+      resumeIdAfterAgentMayHaveFlipped("codex", "codex", "codex-sess"),
+    ).toEqual({ stale: false, savedSessionId: "codex-sess" });
+    expect(resumeIdAfterAgentMayHaveFlipped("grok", "grok", null)).toEqual({
+      stale: false,
+      savedSessionId: null,
+    });
+  });
+
+  it("marks stale and drops id when detect flipped selected agent", () => {
+    // Launch default grok → detect restores selectedAgentId=codex mid-hydrate.
+    expect(
+      resumeIdAfterAgentMayHaveFlipped("grok", "codex", "grok-sess"),
+    ).toEqual({ stale: true, savedSessionId: null });
   });
 });
 

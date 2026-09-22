@@ -59,6 +59,7 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 - Conversation / skill / auth state: **vendor directories** (e.g. `~/.grok`, Codex home), same as the TUI.
 - App preferences only: last workspace folder, selected agent id, per-agent `cwd→sessionId` maps (`{agentId}.sessionByCwd`) — via `tauri-plugin-store`.
 - No unified cross-vendor session DB. Switching agents disconnects, clears the transcript, and reloads that vendor's Resume id.
+- Launch hydrate runs **after** agent detect so `selectedAgentId` is known; if detect still flips mid-read, Resume is reloaded for the agent selected at commit time (never cross-vendor).
 
 ## Defaults (scaffold)
 

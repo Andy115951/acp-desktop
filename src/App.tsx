@@ -47,13 +47,19 @@ export default function App() {
     bindEvents,
   } = useSessionStore();
 
+  // Detect agents (and selectedAgentId prefs) before restoring lastCwd /
+  // Resume — parallel hydrate raced detect and could stamp the wrong vendor’s
+  // session id onto the Switch selection.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    void hydrateFromPrefs();
-  }, [hydrateFromPrefs]);
+    let cancelled = false;
+    void (async () => {
+      await refresh();
+      if (!cancelled) await hydrateFromPrefs();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh, hydrateFromPrefs]);
 
   // Per-vendor histories: on agent switch, drop live session + reload Resume id.
   const prevAgentRef = useRef(selectedAgentId);

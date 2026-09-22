@@ -1,10 +1,6 @@
 /** Pure helpers for agent switcher / per-vendor Resume (unit-tested; no Tauri). */
 
-import {
-  PREFS_KEY_SESSION_BY_CWD,
-  sessionPrefsKey,
-  type SessionByCwd,
-} from "./sessionPrefs";
+import { sessionPrefsKey, type SessionByCwd } from "./sessionPrefs";
 
 export type ConnectableAgent = {
   id: string;
@@ -47,25 +43,33 @@ export function sessionPatchAfterAgentSwitch(
 }
 
 /**
- * Look up Resume id for `agentId`+`cwd` from per-vendor maps.
- * Never reads another vendor’s key — Grok may fall back to legacy
- * `grok.sessionByCwd` only when its per-agent map is empty.
+ * Look up Resume id for `agentId`+`cwd` from that vendor’s map only.
+ * Empty / missing maps → null. Never reads another vendor’s key
+ * (`codex.sessionByCwd` vs `grok.sessionByCwd`).
  */
 export function resumeIdForAgent(
   agentId: string,
   cwd: string,
   getMap: (key: string) => SessionByCwd | null | undefined,
 ): string | null {
-  const key = sessionPrefsKey(agentId);
-  let map = getMap(key) ?? {};
-  if (
-    Object.keys(map).length === 0 &&
-    agentId === "grok" &&
-    key !== PREFS_KEY_SESSION_BY_CWD
-  ) {
-    map = getMap(PREFS_KEY_SESSION_BY_CWD) ?? {};
-  }
+  const map = getMap(sessionPrefsKey(agentId)) ?? {};
   return map[cwd] ?? null;
+}
+
+/**
+ * After async prefs I/O, Resume must match the agent selected at commit time.
+ * Detect may flip `selectedAgentId` while `lastCwd` / session maps load —
+ * if so, discard the stale id and tell the caller to reload for `agentNow`.
+ */
+export function resumeIdAfterAgentMayHaveFlipped(
+  agentWhenLoadStarted: string,
+  agentNow: string,
+  loadedId: string | null,
+): { stale: boolean; savedSessionId: string | null } {
+  if (agentWhenLoadStarted === agentNow) {
+    return { stale: false, savedSessionId: loadedId };
+  }
+  return { stale: true, savedSessionId: null };
 }
 
 /**

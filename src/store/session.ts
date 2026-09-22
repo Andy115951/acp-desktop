@@ -11,7 +11,6 @@ import {
 import { useAgentsStore } from "./agents";
 import {
   PREFS_KEY_LAST_CWD,
-  PREFS_KEY_SESSION_BY_CWD,
   isPlausibleCwd,
   isSessionLoadFailedError,
   removeSessionByCwd,
@@ -20,6 +19,7 @@ import {
   type SessionByCwd,
 } from "../lib/sessionPrefs";
 import {
+  resumeIdAfterAgentMayHaveFlipped,
   resumeIdForAgent,
   sessionPatchAfterAgentSwitch,
 } from "../lib/agentSwitch";
@@ -54,13 +54,9 @@ async function loadSavedSessionId(
 ): Promise<string | null> {
   try {
     const store = await getPrefsStore();
-    // Prefetch maps the pure helper may touch (per-agent + legacy grok key).
-    const keys = new Set([sessionPrefsKey(agentId), PREFS_KEY_SESSION_BY_CWD]);
-    const cache: Record<string, SessionByCwd> = {};
-    for (const key of keys) {
-      cache[key] = (await store.get<SessionByCwd>(key)) ?? {};
-    }
-    return resumeIdForAgent(agentId, cwd, (key) => cache[key]);
+    const key = sessionPrefsKey(agentId);
+    const map = (await store.get<SessionByCwd>(key)) ?? {};
+    return resumeIdForAgent(agentId, cwd, (k) => (k === key ? map : {}));
   } catch {
     return null;
   }
@@ -180,12 +176,36 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   hydrateFromPrefs: async () => {
     // Best-effort restore so Resume/Connect work after relaunch.
+    // Call after agent detect so `selectedAgentId` is already prefs-hydrated;
+    // still re-check agent after each await in case detect races this call.
     if (get().cwd) return;
     const lastCwd = await loadLastCwd();
     if (!lastCwd) return;
-    const savedSessionId = await loadSavedSessionId(currentAgentId(), lastCwd);
+    if (get().cwd) return;
+
+    const agentWhenLoadStarted = currentAgentId();
+    let savedSessionId = await loadSavedSessionId(
+      agentWhenLoadStarted,
+      lastCwd,
+    );
     // Bail if the user picked a folder while we were reading prefs.
     if (get().cwd) return;
+
+    const agentNow = currentAgentId();
+    const gate = resumeIdAfterAgentMayHaveFlipped(
+      agentWhenLoadStarted,
+      agentNow,
+      savedSessionId,
+    );
+    if (gate.stale) {
+      // Detect flipped selectedAgentId mid-hydrate — reload that vendor’s map
+      // so we never stamp Grok’s Resume id onto a Codex selection (or vice versa).
+      savedSessionId = await loadSavedSessionId(agentNow, lastCwd);
+      if (get().cwd) return;
+    } else {
+      savedSessionId = gate.savedSessionId;
+    }
+
     set({
       cwd: lastCwd,
       savedSessionId,
