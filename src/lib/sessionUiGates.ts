@@ -52,3 +52,24 @@ export function draftEnterShouldSend(
   if (permissionOpen) return false;
   return key === "Enter" && !shiftKey;
 }
+
+/**
+ * Connect enablement for the selected built-in agent.
+ * Fake/custom override may Connect even when PATH detect is false
+ * (Linux `tauri:fake` Switch→Codex while both CLIs are missing).
+ */
+export function canConnectSelectedAgent(
+  connectable: boolean | undefined,
+  available: boolean | undefined,
+  usingFake: boolean,
+): boolean {
+  return !!connectable && (!!available || usingFake);
+}
+
+/**
+ * Clear button: drop transcript and dismiss the error banner so
+ * Clear→Connect after a stale Resume / failed turn is uncluttered.
+ */
+export function sessionPatchAfterClear(): { lines: []; error: null } {
+  return { lines: [], error: null };
+}

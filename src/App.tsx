@@ -3,10 +3,13 @@ import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
   canConnectNewSession,
+  canConnectSelectedAgent,
   canResumeSession,
   canSendPrompt,
   draftEnterShouldSend,
 } from "./lib/sessionUiGates";
+import { agentAuthHint } from "./lib/agentHints";
+import { shouldDisconnectOnAgentSwitch } from "./lib/agentSwitch";
 import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
 
@@ -44,13 +47,34 @@ export default function App() {
     bindEvents,
   } = useSessionStore();
 
+  // Detect agents (and selectedAgentId prefs) before restoring lastCwd /
+  // Resume — parallel hydrate raced detect and could stamp the wrong vendor’s
+  // session id onto the Switch selection.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let cancelled = false;
+    void (async () => {
+      await refresh();
+      if (!cancelled) await hydrateFromPrefs();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh, hydrateFromPrefs]);
 
+  // Per-vendor histories: on agent switch, drop live session + reload Resume id.
+  const prevAgentRef = useRef(selectedAgentId);
   useEffect(() => {
-    void hydrateFromPrefs();
-  }, [hydrateFromPrefs]);
+    if (prevAgentRef.current === selectedAgentId) return;
+    prevAgentRef.current = selectedAgentId;
+    const run = async () => {
+      const session = useSessionStore.getState();
+      if (shouldDisconnectOnAgentSwitch(session.connected, session.busy)) {
+        await session.disconnect();
+      }
+      await session.reloadForAgent(selectedAgentId);
+    };
+    void run();
+  }, [selectedAgentId]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -85,8 +109,11 @@ export default function App() {
 
   const selected = agents.find((a) => a.id === selectedAgentId);
   const usingFake = !!override?.usingOverride;
-  const canConnectAgent =
-    !!selected?.connectable && (!!selected?.available || usingFake);
+  const canConnectAgent = canConnectSelectedAgent(
+    selected?.connectable,
+    selected?.available,
+    usingFake,
+  );
   const uiGates = {
     cwd,
     connected,
@@ -101,6 +128,7 @@ export default function App() {
   const canConnectNew = canConnectNewSession(uiGates);
   const canSend = canSendPrompt(uiGates);
   const canCancel = canCancelPrompt(uiGates);
+  const authHint = agentAuthHint(selectedAgentId, usingFake);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-8">
@@ -112,28 +140,52 @@ export default function App() {
           acp-desktop
         </h1>
         <p className="text-sm text-slate-400">
-          ACP host path: last folder restores on launch; connect a selected
-          agent via host APIs (first backend:{" "}
-          <code className="text-slate-300">grok agent stdio</code>), stream a
-          turn, approve tools with Ask, resume via{" "}
+          ACP host path: last folder restores on launch; switch Grok / Codex
+          in the Agents list (histories stay per-vendor). Connect via host
+          APIs, stream a turn, approve tools with Ask, resume via{" "}
           <code className="text-slate-300">session/load</code>.
         </p>
       </header>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-medium text-slate-200">Agents</h2>
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            disabled={loading}
-            className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:border-slate-500 disabled:opacity-50"
-          >
-            {loading ? "Checking…" : "Refresh"}
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-slate-400">
+              Switch
+              <select
+                value={selectedAgentId}
+                disabled={busy}
+                onChange={(e) => selectAgent(e.target.value)}
+                className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
+              >
+                {agents
+                  .filter((a) => a.connectable)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                      {a.available ? "" : " (missing)"}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:border-slate-500 disabled:opacity-50"
+            >
+              {loading ? "Checking…" : "Refresh"}
+            </button>
+          </div>
         </div>
         {detectError ? (
           <p className="mb-2 text-sm text-red-300">{detectError}</p>
+        ) : null}
+        {authHint ? (
+          <p className="mb-3 rounded-md border border-sky-900/50 bg-sky-950/30 px-3 py-2 text-xs text-sky-200/90">
+            {authHint}
+          </p>
         ) : null}
         <ul className="divide-y divide-slate-800">
           {agents.map((agent) => {
@@ -177,6 +229,11 @@ export default function App() {
                     <p className="pl-4 text-xs text-slate-500">
                       <code>{agent.binary}</code>
                     </p>
+                    {agent.detail ? (
+                      <p className="pl-4 pt-0.5 text-xs text-amber-200/80">
+                        {agent.detail}
+                      </p>
+                    ) : null}
                   </div>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs ${
@@ -232,7 +289,9 @@ export default function App() {
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         <h2 className="text-sm font-medium text-slate-200">
-          {usingFake ? "Fake agent session" : "Grok session"}
+          {usingFake
+            ? "Fake agent session"
+            : `${selected?.name ?? "Agent"} session`}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -359,7 +418,13 @@ export default function App() {
               void send();
             }}
             disabled={!connected || busy || !!permission}
-            placeholder={connected ? (usingFake ? "Message fake agent…" : "Message Grok…") : "Connect first"}
+            placeholder={
+              connected
+                ? usingFake
+                  ? "Message fake agent…"
+                  : `Message ${selected?.name ?? "agent"}…`
+                : "Connect first"
+            }
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 disabled:opacity-50"
           />
           <button

@@ -1,8 +1,9 @@
-//! Pluggable ACP agent backends (M3).
+//! Pluggable ACP agent backends (M3+).
 //!
 //! The UI talks only to host commands (`detect_agents`, `connect_agent`, …).
-//! Vendor spawn details live behind [`AgentBackend`]; first impl is [`GrokBackend`].
-//! A second CLI (M4) adds another impl — no UI fork per vendor.
+//! Vendor spawn details live behind [`AgentBackend`]:
+//! - [`GrokBackend`] — `grok agent stdio`
+//! - [`CodexBackend`] — `codex-acp` / `npx -y @agentclientprotocol/codex-acp` (M4)
 
 use serde::Serialize;
 use std::env;
@@ -51,8 +52,79 @@ impl AgentBackend for GrokBackend {
 
 static GROK_BACKEND: GrokBackend = GrokBackend;
 
+/// Codex via official ACP adapter (`@agentclientprotocol/codex-acp`).
+///
+/// Prefer a global `codex-acp` binary; otherwise spawn through `npx -y`.
+/// Availability: `codex-acp` **or** local `codex` CLI (adapter bundles Codex,
+/// but detecting `codex` means the user already uses Codex on this machine).
+pub struct CodexBackend;
+
+impl AgentBackend for CodexBackend {
+    fn id(&self) -> &'static str {
+        "codex"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Codex"
+    }
+
+    fn binary(&self) -> &'static str {
+        // Shown in the Agents list; primary probe target is still `codex-acp`.
+        "codex-acp"
+    }
+
+    fn detect(&self) -> bool {
+        codex_is_detectable(
+            binary_named_on_path("codex-acp"),
+            binary_named_on_path("codex"),
+        )
+    }
+
+    fn default_argv(&self) -> Vec<String> {
+        codex_spawn_argv(binary_named_on_path("codex-acp"))
+    }
+}
+
+/// Pure detect rule: `codex-acp` **or** local `codex` CLI.
+pub fn codex_is_detectable(has_codex_acp: bool, has_codex: bool) -> bool {
+    has_codex_acp || has_codex
+}
+
+/// Pure spawn argv: prefer global `codex-acp`, else `npx -y` published adapter.
+///
+/// Common Mac state: `codex` on PATH but no `codex-acp` → Connect uses npx
+/// (first run may download). Callers pass the `codex-acp` probe result only;
+/// detect may still be true via `codex` alone.
+pub fn codex_spawn_argv(has_codex_acp: bool) -> Vec<String> {
+    if has_codex_acp {
+        vec!["codex-acp".into()]
+    } else {
+        vec![
+            "npx".into(),
+            "-y".into(),
+            "@agentclientprotocol/codex-acp".into(),
+        ]
+    }
+}
+
+/// Agents-list detail when Codex is available only via `codex` (npx spawn).
+pub fn codex_availability_detail(has_codex_acp: bool, has_codex: bool) -> Option<String> {
+    if has_codex_acp {
+        None
+    } else if has_codex {
+        Some(
+            "codex on PATH; Connect spawns via npx (@agentclientprotocol/codex-acp). Install `codex-acp` globally to skip the download."
+                .into(),
+        )
+    } else {
+        None
+    }
+}
+
+static CODEX_BACKEND: CodexBackend = CodexBackend;
+
 /// Built-in catalog entry (detect list). Only `backend`-bearing rows are
-/// connectable in this milestone; others are placeholders for M4.
+/// connectable; Claude remains an M4+/later placeholder.
 #[derive(Clone, Copy)]
 pub struct BuiltinAgent {
     pub id: &'static str,
@@ -73,8 +145,8 @@ static BUILTIN_AGENTS: &[BuiltinAgent] = &[
     BuiltinAgent {
         id: "codex",
         name: "Codex",
-        binary: "codex",
-        backend: None,
+        binary: "codex-acp",
+        backend: Some(&CODEX_BACKEND),
     },
     BuiltinAgent {
         id: "claude",
@@ -98,7 +170,7 @@ pub fn lookup_backend(agent_id: &str) -> Result<&'static dyn AgentBackend, Strin
         if entry.id == id {
             return entry.backend.ok_or_else(|| {
                 format!(
-                    "agent `{id}` is listed but not wired yet (M4). Use `grok` or enable the fake/custom override."
+                    "agent `{id}` is listed but not wired yet. Use `grok`/`codex` or enable the fake/custom override."
                 )
             });
         }
@@ -113,8 +185,11 @@ pub struct AgentInfo {
     pub name: String,
     pub binary: String,
     pub available: bool,
-    /// Host can `connect_agent` this id (false for M4 placeholders).
+    /// Host can `connect_agent` this id (false for unwired placeholders).
     pub connectable: bool,
+    /// Optional Agents-list note (e.g. Codex npx fallback when only `codex` is present).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 pub fn detect_builtin_agents() -> Vec<AgentInfo> {
@@ -126,12 +201,21 @@ pub fn detect_builtin_agents() -> Vec<AgentInfo> {
             } else {
                 (binary_named_on_path(entry.binary), entry.name)
             };
+            let detail = if entry.id == "codex" {
+                codex_availability_detail(
+                    binary_named_on_path("codex-acp"),
+                    binary_named_on_path("codex"),
+                )
+            } else {
+                None
+            };
             AgentInfo {
                 id: entry.id.to_string(),
                 name: name.to_string(),
                 binary: entry.binary.to_string(),
                 available,
                 connectable: entry.backend.is_some(),
+                detail,
             }
         })
         .collect()
@@ -290,21 +374,151 @@ pub fn set_fake_agent_enabled(enabled: bool) -> Result<AgentOverrideStatus, Stri
     agent_override_status()
 }
 
+
+/// Clear message when detect() fails before spawn (Connect preflight).
+pub fn missing_agent_message(backend: &dyn AgentBackend) -> String {
+    match backend.id() {
+        "codex" => concat!(
+            "Codex ACP not found on PATH. Install `codex` and/or `codex-acp` ",
+            "(`npm i -g @agentclientprotocol/codex-acp`), or ensure `npx`/`node` ",
+            "is available so Connect can fall back to ",
+            "`npx -y @agentclientprotocol/codex-acp`. ",
+            "Auth stays with the local CLI: ChatGPT login or ",
+            "`CODEX_API_KEY` / `OPENAI_API_KEY`."
+        )
+        .into(),
+        "grok" => format!(
+            "`{}` not found on PATH. Install Grok Build CLI, or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD.",
+            backend.binary()
+        ),
+        _ => format!(
+            "`{}` not found on PATH (or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD)",
+            backend.binary()
+        ),
+    }
+}
+
+fn looks_like_auth_failure(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    [
+        "auth",
+        "unauthor",
+        "login",
+        "chatgpt",
+        "api key",
+        "api_key",
+        "apikey",
+        "codex_api_key",
+        "openai_api_key",
+        "not signed",
+        "sign in",
+        "401",
+        "403",
+        "forbidden",
+        "credential",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
+}
+
+/// Codex / OpenAI quota or plan limits (seen on Mac prompt as usageLimitExceeded).
+/// Must win over auth/spawn: rate-limit bodies often include "403" / "not found".
+fn looks_like_usage_limit(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    [
+        "usagelimitexceeded",
+        "usage_limit",
+        "usage limit",
+        "rate limit",
+        "ratelimit",
+        "quota exceeded",
+        "quota_exceeded",
+        "too many requests",
+        "429",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
+}
+
+fn looks_like_spawn_failure(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    [
+        "no such file",
+        "not found",
+        "enoent",
+        "spawn",
+        "executable",
+        "npx",
+        "failed to configure",
+        "failed to spawn",
+        "command not found",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
+}
+
+/// Append vendor-specific guidance to a raw connect/handshake error.
+///
+/// Keeps the original message first so matchers like `session/load failed`
+/// still work on the leading text.
+pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return raw.to_string();
+    }
+    // Avoid stacking the same hint if we already enriched once.
+    if raw.contains("Codex auth:")
+        || raw.contains("Codex ACP:")
+        || raw.contains("Codex usage:")
+    {
+        return raw.to_string();
+    }
+    // Stale Resume / missing session file — not a spawn/auth problem.
+    // "not found" / FS_NOT_FOUND would otherwise match looks_like_spawn_failure.
+    if raw.to_ascii_lowercase().contains("session/load failed") {
+        return raw.to_string();
+    }
+    match agent_id.trim() {
+        // Quota / plan limits are not install or auth failures (Mac prompt path).
+        "codex" if looks_like_usage_limit(raw) => format!(
+            "{raw}\n\nCodex usage: plan or rate limit hit — wait and retry, or check              Codex / ChatGPT usage. This is not a missing `codex-acp` install or login."
+        ),
+        "codex" if looks_like_auth_failure(raw) => format!(
+            "{raw}\n\nCodex auth: sign in via the local `codex` CLI (ChatGPT),              or set `CODEX_API_KEY` / `OPENAI_API_KEY` in the environment, then retry Connect."
+        ),
+        "codex" if looks_like_spawn_failure(raw) => format!(
+            "{raw}\n\nCodex ACP: install `codex-acp` (`npm i -g @agentclientprotocol/codex-acp`)              or ensure `npx`/`node` is on PATH. Detect also accepts a local `codex` binary."
+        ),
+        // Prompt/turn errors are not Connect preflight — do not suggest install/auth.
+        "codex" if raw.to_ascii_lowercase().contains("prompt failed") => raw.to_string(),
+        "codex" => format!(
+            "{raw}\n\nIf this looks like missing install or auth: install `codex`/`codex-acp`,              complete ChatGPT login in the Codex CLI (or set `CODEX_API_KEY` / `OPENAI_API_KEY`),              then retry Connect."
+        ),
+        _ => raw.to_string(),
+    }
+}
+
+/// Shared across crates' unit tests that mutate process env (see `lib` tests).
+#[cfg(test)]
+pub static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    use super::TEST_ENV_LOCK as ENV_LOCK;
 
     #[test]
-    fn builtin_table_lists_grok_connectable() {
+    fn builtin_table_lists_grok_and_codex_connectable() {
         let agents = detect_builtin_agents();
         let grok = agents.iter().find(|a| a.id == "grok").expect("grok");
         assert!(grok.connectable);
         assert_eq!(grok.binary, "grok");
         let codex = agents.iter().find(|a| a.id == "codex").expect("codex");
-        assert!(!codex.connectable);
+        assert!(codex.connectable);
+        assert_eq!(codex.binary, "codex-acp");
+        let claude = agents.iter().find(|a| a.id == "claude").expect("claude");
+        assert!(!claude.connectable);
     }
 
     #[test]
@@ -315,10 +529,31 @@ mod tests {
     }
 
     #[test]
-    fn lookup_backend_rejects_m4_placeholder() {
-        match lookup_backend("codex") {
-            Ok(_) => panic!("codex should not be connectable yet"),
-            Err(err) => assert!(err.contains("M4"), "{err}"),
+    fn lookup_backend_codex_ok() {
+        let b = lookup_backend("codex").unwrap();
+        assert_eq!(b.id(), "codex");
+        assert_eq!(b.binary(), "codex-acp");
+        let argv = b.default_argv();
+        assert!(
+            argv == vec!["codex-acp".to_string()]
+                || argv
+                    == vec![
+                        "npx".to_string(),
+                        "-y".to_string(),
+                        "@agentclientprotocol/codex-acp".to_string()
+                    ],
+            "unexpected codex argv: {argv:?}"
+        );
+    }
+
+    #[test]
+    fn lookup_backend_rejects_claude_placeholder() {
+        match lookup_backend("claude") {
+            Ok(_) => panic!("claude should not be connectable yet"),
+            Err(err) => assert!(
+                err.contains("not wired") || err.contains("M4"),
+                "{err}"
+            ),
         }
     }
 
@@ -344,4 +579,145 @@ mod tests {
         );
         env::remove_var("ACP_DESKTOP_AGENT_CMD");
     }
+
+    #[test]
+    fn missing_agent_message_codex_mentions_auth() {
+        let msg = missing_agent_message(&CODEX_BACKEND);
+        assert!(msg.contains("Codex"), "{msg}");
+        assert!(
+            msg.contains("CODEX_API_KEY") || msg.contains("ChatGPT"),
+            "{msg}"
+        );
+        assert!(msg.contains("codex-acp") || msg.contains("npx"), "{msg}");
+    }
+
+    #[test]
+    fn enrich_connect_error_codex_auth() {
+        let out = enrich_connect_error("codex", "initialize failed: unauthorized");
+        assert!(out.starts_with("initialize failed"), "{out}");
+        assert!(out.contains("Codex auth:"), "{out}");
+        assert!(out.contains("CODEX_API_KEY"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_codex_spawn() {
+        let out = enrich_connect_error("codex", "Failed to configure agent: No such file or directory");
+        assert!(out.contains("Codex ACP:"), "{out}");
+        assert!(out.contains("npx"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_preserves_session_load_prefix() {
+        let raw = "session/load failed: unknown id. You can start a New session.";
+        let out = enrich_connect_error("codex", raw);
+        assert!(out.starts_with("session/load failed"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_skips_spawn_hint_for_fs_not_found_load() {
+        let raw = "session/load failed: FS_NOT_FOUND. Saved session is missing or expired — use Connect (New session).";
+        let out = enrich_connect_error("codex", raw);
+        assert_eq!(out, raw, "must not append Codex ACP spawn hint");
+        assert!(!out.contains("Codex ACP:"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_noop_for_grok() {
+        let raw = "something broke";
+        assert_eq!(enrich_connect_error("grok", raw), raw);
+    }
+
+    #[test]
+    fn enrich_connect_error_codex_usage_limit_not_auth() {
+        let raw = "prompt failed: usageLimitExceeded";
+        let out = enrich_connect_error("codex", raw);
+        assert!(out.starts_with("prompt failed"), "{out}");
+        assert!(out.contains("Codex usage:"), "{out}");
+        assert!(!out.contains("Codex auth:"), "{out}");
+        assert!(!out.contains("Codex ACP:"), "{out}");
+        assert!(!out.contains("missing install or auth"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_usage_wins_over_403_auth_keyword() {
+        // Rate-limit payloads sometimes include 403; must not get auth hint.
+        let raw = "prompt failed: 403 usageLimitExceeded";
+        let out = enrich_connect_error("codex", raw);
+        assert!(out.contains("Codex usage:"), "{out}");
+        assert!(!out.contains("Codex auth:"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_prompt_failed_skips_generic_install_hint() {
+        let raw = "prompt failed: model refused";
+        let out = enrich_connect_error("codex", raw);
+        assert_eq!(
+            out, raw,
+            "non-quota prompt errors must not get Connect install/auth hint"
+        );
+    }
+
+    #[test]
+    fn codex_spawn_argv_prefers_binary_when_present() {
+        assert_eq!(codex_spawn_argv(true), vec!["codex-acp".to_string()]);
+    }
+
+    #[test]
+    fn codex_spawn_argv_falls_back_to_npx() {
+        assert_eq!(
+            codex_spawn_argv(false),
+            vec![
+                "npx".to_string(),
+                "-y".to_string(),
+                "@agentclientprotocol/codex-acp".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn codex_is_detectable_via_codex_alone() {
+        // Common Mac: `codex` installed, `codex-acp` not on PATH.
+        assert!(codex_is_detectable(false, true));
+        assert!(codex_is_detectable(true, false));
+        assert!(codex_is_detectable(true, true));
+        assert!(!codex_is_detectable(false, false));
+    }
+
+    #[test]
+    fn codex_availability_detail_npx_when_only_codex() {
+        let d = codex_availability_detail(false, true).expect("detail");
+        assert!(d.contains("npx"), "{d}");
+        assert!(d.contains("codex-acp"), "{d}");
+        assert!(codex_availability_detail(true, true).is_none());
+        assert!(codex_availability_detail(true, false).is_none());
+        assert!(codex_availability_detail(false, false).is_none());
+    }
+
+    #[test]
+    fn resolve_codex_uses_spawn_helper_without_override() {
+        let _g = ENV_LOCK.lock().unwrap();
+        env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+        let argv = resolve_agent_command(&CODEX_BACKEND).unwrap();
+        assert!(
+            argv == codex_spawn_argv(true) || argv == codex_spawn_argv(false),
+            "unexpected codex resolve argv: {argv:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_codex_respects_fake_override() {
+        // Switch→Codex with tauri:fake must still spawn fake-acp-agent, not npx/codex-acp.
+        let _g = ENV_LOCK.lock().unwrap();
+        env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
+        let argv = resolve_agent_command(&CODEX_BACKEND).expect("fake resolves for Codex");
+        assert!(
+            argv[0].ends_with("fake-acp-agent") || argv[0].ends_with("fake-acp-agent.exe"),
+            "unexpected fake argv for Codex: {argv:?}"
+        );
+        assert!(using_override_agent());
+        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+    }
+
 }

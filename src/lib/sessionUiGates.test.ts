@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   canCancelPrompt,
   canConnectNewSession,
+  canConnectSelectedAgent,
+  sessionPatchAfterClear,
   canResumeSession,
   canSendPrompt,
   draftEnterShouldSend,
@@ -87,5 +89,27 @@ describe("draftEnterShouldSend", () => {
     expect(draftEnterShouldSend(true, "Enter", false)).toBe(false);
     expect(draftEnterShouldSend(false, "Enter", true)).toBe(false);
     expect(draftEnterShouldSend(false, "a", false)).toBe(false);
+  });
+});
+
+describe("canConnectSelectedAgent (fake + missing Codex)", () => {
+  it("allows connectable + available without fake", () => {
+    expect(canConnectSelectedAgent(true, true, false)).toBe(true);
+  });
+
+  it("blocks missing vendor unless fake override is on", () => {
+    expect(canConnectSelectedAgent(true, false, false)).toBe(false);
+    expect(canConnectSelectedAgent(true, false, true)).toBe(true);
+  });
+
+  it("blocks non-connectable placeholders even with fake", () => {
+    expect(canConnectSelectedAgent(false, false, true)).toBe(false);
+    expect(canConnectSelectedAgent(undefined, undefined, true)).toBe(false);
+  });
+});
+
+describe("sessionPatchAfterClear", () => {
+  it("clears transcript and dismisses error for Clear→Connect", () => {
+    expect(sessionPatchAfterClear()).toEqual({ lines: [], error: null });
   });
 });

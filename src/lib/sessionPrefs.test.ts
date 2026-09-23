@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   PREFS_KEY_LAST_CWD,
+  PREFS_KEY_SELECTED_AGENT,
   PREFS_KEY_SESSION_BY_CWD,
+  STALE_RESUME_USER_MESSAGE,
   isPlausibleCwd,
   isSessionLoadFailedError,
+  recoverableSessionLoadMessage,
   removeSessionByCwd,
+  sessionPrefsKey,
+  shouldPersistConnectedSessionId,
   upsertSessionByCwd,
 } from "./sessionPrefs";
 
@@ -12,6 +17,13 @@ describe("prefs keys", () => {
   it("exports stable store key names", () => {
     expect(PREFS_KEY_SESSION_BY_CWD).toBe("grok.sessionByCwd");
     expect(PREFS_KEY_LAST_CWD).toBe("lastCwd");
+    expect(PREFS_KEY_SELECTED_AGENT).toBe("selectedAgentId");
+  });
+
+  it("scopes session maps per agent id", () => {
+    expect(sessionPrefsKey("grok")).toBe("grok.sessionByCwd");
+    expect(sessionPrefsKey("codex")).toBe("codex.sessionByCwd");
+    expect(sessionPrefsKey("  ")).toBe("grok.sessionByCwd");
   });
 });
 
@@ -28,11 +40,92 @@ describe("isSessionLoadFailedError", () => {
     expect(isSessionLoadFailedError("Session/Load Failed: boom")).toBe(true);
   });
 
+  it("matches FS_NOT_FOUND and missing-session variants", () => {
+    expect(
+      isSessionLoadFailedError("session/load failed: FS_NOT_FOUND"),
+    ).toBe(true);
+    expect(isSessionLoadFailedError("Error: FS_NOT_FOUND")).toBe(true);
+    expect(isSessionLoadFailedError("unknown session id")).toBe(true);
+    expect(isSessionLoadFailedError("session not found")).toBe(true);
+    expect(isSessionLoadFailedError("no such session")).toBe(true);
+    expect(
+      isSessionLoadFailedError("ENOENT: session file missing"),
+    ).toBe(true);
+  });
+
   it("ignores unrelated errors", () => {
     expect(isSessionLoadFailedError("grok not found on PATH")).toBe(false);
     expect(isSessionLoadFailedError("no pending permission request")).toBe(
       false,
     );
+    expect(isSessionLoadFailedError("usageLimitExceeded")).toBe(false);
+    // Generic ENOENT without session context is spawn/path, not Resume.
+    expect(isSessionLoadFailedError("ENOENT: no such file")).toBe(false);
+  });
+});
+
+describe("recoverableSessionLoadMessage", () => {
+  it("rewrites stale load errors toward Connect", () => {
+    const out = recoverableSessionLoadMessage(
+      "session/load failed: FS_NOT_FOUND. You can start a New session.",
+    );
+    expect(out).toContain(STALE_RESUME_USER_MESSAGE);
+    expect(out).toMatch(/FS_NOT_FOUND/);
+  });
+
+  it("passes through unrelated errors", () => {
+    expect(recoverableSessionLoadMessage("prompt failed: boom")).toBe(
+      "prompt failed: boom",
+    );
+  });
+});
+
+describe("shouldPersistConnectedSessionId", () => {
+  it("persists only when connected, idle, with id, no error", () => {
+    expect(
+      shouldPersistConnectedSessionId({
+        connected: true,
+        sessionId: "s1",
+        busy: false,
+        error: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("refuses mid-Resume busy emit (race that re-saved dead ids)", () => {
+    expect(
+      shouldPersistConnectedSessionId({
+        connected: true,
+        sessionId: "stale-id",
+        busy: true,
+        error: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("refuses disconnected / missing id / error", () => {
+    expect(
+      shouldPersistConnectedSessionId({
+        connected: false,
+        sessionId: "s1",
+        busy: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPersistConnectedSessionId({
+        connected: true,
+        sessionId: null,
+        busy: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPersistConnectedSessionId({
+        connected: true,
+        sessionId: "s1",
+        busy: false,
+        error: "session/load failed",
+      }),
+    ).toBe(false);
   });
 });
 

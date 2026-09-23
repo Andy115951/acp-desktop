@@ -34,7 +34,7 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
                                  |
                                  |  agent-client-protocol (ACP v1)
                                  v
-                           grok agent stdio   (later: Codex / Claude adapters)
+                           grok agent stdio | codex-acp (Claude later)
 ```
 
 - UI never talks to the CLI directly; the Rust host owns spawn, handshake, streaming, and permission replies.
@@ -49,7 +49,9 @@ Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming tur
 
 Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2 Done on the [project board](https://github.com/users/Andy115951/projects/2)). Optional polish [#9](https://github.com/Andy115951/acp-desktop/pull/9) (last workspace folder prefs) is merged to `main`.
 
-**In progress:** [#4](https://github.com/Andy115951/acp-desktop/issues/4) M3 `AgentBackend` — Rust trait + `GrokBackend`, built-in agent table, UI via `connect_agent` / `disconnect_agent` (no vendor-specific UI paths). Next: M4 second agent / switcher, then M5 packaging.
+**Done on main:** [#4](https://github.com/Andy115951/acp-desktop/issues/4) M3 `AgentBackend` (`GrokBackend` + `connect_agent`).
+
+**In progress:** [#5](https://github.com/Andy115951/acp-desktop/issues/5) M4 — second backend **Codex** via `@agentclientprotocol/codex-acp`, Agents list + top Switch dropdown, per-vendor session prefs (`{agentId}.sessionByCwd`). Claude remains listed-not-wired. Next: M5 packaging.
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
@@ -60,6 +62,19 @@ Prerequisites: [Node.js](https://nodejs.org/), [Rust](https://rustup.rs/), and O
 ```bash
 npm install
 npm run tauri dev
+```
+
+### Codex ACP headless Connect/Ask/Resume (Mac)
+
+Spawns the same argv as `CodexBackend` (`codex-acp` if on `PATH`, else `npx -y @agentclientprotocol/codex-acp`), then over stdio NDJSON runs:
+
+`initialize` → `session/new` → `session/prompt` → fresh-process `session/load`
+
+Asserts `protocolVersion: 1`, `loadSession`, `authMethods` (`api-key`, `chat-gpt`), a usable `sessionId`, prompt `end_turn`, and Resume replay chunks. Needs a local Codex login (ChatGPT / API key). Does **not** replace Mac UI Connect/Ask/Resume clicks.
+
+```bash
+npm run smoke:codex-acp
+# optional: CODEX_ACP_SMOKE_SKIP_PROMPT=1 npm run smoke:codex-acp
 ```
 
 ### Fake ACP agent (permission smoke)
@@ -95,8 +110,8 @@ ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
 
 1. **Tauri skeleton + Grok detect** — done (M1 / [#2](https://github.com/Andy115951/acp-desktop/issues/2))
 2. **Grok ACP path** — done (M2 / [#3](https://github.com/Andy115951/acp-desktop/issues/3), [#8](https://github.com/Andy115951/acp-desktop/pull/8) + [#9](https://github.com/Andy115951/acp-desktop/pull/9))
-3. **AgentBackend** — abstract the transport so a second CLI can plug in (next; not started)
-4. **Multi-agent switch** — add one of Codex or Claude; switcher UI
+3. **AgentBackend** — done (M3 / [#4](https://github.com/Andy115951/acp-desktop/issues/4), [#11](https://github.com/Andy115951/acp-desktop/pull/11))
+4. **Multi-agent switch** — M4: Codex via `codex-acp` + switcher (in progress / [#5](https://github.com/Andy115951/acp-desktop/issues/5))
 5. **macOS packaging** — after the above works
 
 ## Tech notes
@@ -111,8 +126,8 @@ ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
 
 ### Still open
 
-- Second agent: Codex vs Claude Code
-- Switcher UI: top dropdown vs left list
+- M4 Mac UI E2E: real Codex Connect / Ask / Resume (PR #12; Linux `tauri:fake` covers Switch hydrate + fake override)
+- Third agent: Claude Code (`claude-agent-acp`) — listed, not wired
 - Permission card: modal vs inline in the chat thread
 
 ## Non-goals

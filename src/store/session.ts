@@ -11,13 +11,22 @@ import {
 import { useAgentsStore } from "./agents";
 import {
   PREFS_KEY_LAST_CWD,
-  PREFS_KEY_SESSION_BY_CWD,
   isPlausibleCwd,
   isSessionLoadFailedError,
+  recoverableSessionLoadMessage,
   removeSessionByCwd,
+  sessionPrefsKey,
+  shouldPersistConnectedSessionId,
   upsertSessionByCwd,
   type SessionByCwd,
 } from "../lib/sessionPrefs";
+import { sessionPatchAfterClear } from "../lib/sessionUiGates";
+
+import {
+  resumeIdAfterAgentMayHaveFlipped,
+  resumeIdForAgent,
+  sessionPatchAfterAgentSwitch,
+} from "../lib/agentSwitch";
 
 export type StreamLine = {
   id: string;
@@ -43,41 +52,53 @@ async function getPrefsStore(): Promise<Store> {
   return prefsStore;
 }
 
-async function loadSavedSessionId(cwd: string): Promise<string | null> {
+async function loadSavedSessionId(
+  agentId: string,
+  cwd: string,
+): Promise<string | null> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
-    return map[cwd] ?? null;
+    const key = sessionPrefsKey(agentId);
+    const map = (await store.get<SessionByCwd>(key)) ?? {};
+    return resumeIdForAgent(agentId, cwd, (k) => (k === key ? map : {}));
   } catch {
     return null;
   }
 }
 
-async function saveSessionPrefs(cwd: string, sessionId: string): Promise<void> {
+async function saveSessionPrefs(
+  agentId: string,
+  cwd: string,
+  sessionId: string,
+): Promise<void> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
-    await store.set(
-      PREFS_KEY_SESSION_BY_CWD,
-      upsertSessionByCwd(map, cwd, sessionId),
-    );
+    const key = sessionPrefsKey(agentId);
+    const map = (await store.get<SessionByCwd>(key)) ?? {};
+    await store.set(key, upsertSessionByCwd(map, cwd, sessionId));
     await store.save();
   } catch {
     // Prefs are best-effort; never block the session on store failure.
   }
 }
 
-async function clearSavedSessionId(cwd: string): Promise<void> {
+async function clearSavedSessionId(agentId: string, cwd: string): Promise<void> {
   try {
     const store = await getPrefsStore();
-    const map = (await store.get<SessionByCwd>(PREFS_KEY_SESSION_BY_CWD)) ?? {};
+    const key = sessionPrefsKey(agentId);
+    const map = (await store.get<SessionByCwd>(key)) ?? {};
     const next = removeSessionByCwd(map, cwd);
     if (next === map) return;
-    await store.set(PREFS_KEY_SESSION_BY_CWD, next);
+    await store.set(key, next);
     await store.save();
   } catch {
     // Prefs are best-effort.
   }
+}
+
+/** Current UI-selected agent (fallback grok). */
+function currentAgentId(): string {
+  return useAgentsStore.getState().selectedAgentId || "grok";
 }
 
 async function saveLastCwd(cwd: string): Promise<void> {
@@ -114,6 +135,7 @@ type SessionState = {
   setDraft: (v: string) => void;
   pickFolder: () => Promise<void>;
   hydrateFromPrefs: () => Promise<void>;
+  reloadForAgent: (agentId: string) => Promise<void>;
   connect: (mode?: "new" | "resume") => Promise<void>;
   disconnect: () => Promise<void>;
   send: () => Promise<void>;
@@ -137,34 +159,70 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   permission: null,
   draft: "",
   setDraft: (v) => set({ draft: v }),
-  clearTranscript: () => set({ lines: [] }),
+  clearTranscript: () => set(sessionPatchAfterClear()),
   pickFolder: async () => {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
-      const savedSessionId = await loadSavedSessionId(selected);
+      const savedSessionId = await loadSavedSessionId(
+        currentAgentId(),
+        selected,
+      );
       set({
         cwd: selected,
         error: null,
         savedSessionId,
         sessionId: null,
         loadSessionSupported: null,
+        lines: [],
       });
       void saveLastCwd(selected);
     }
   },
   hydrateFromPrefs: async () => {
     // Best-effort restore so Resume/Connect work after relaunch.
+    // Call after agent detect so `selectedAgentId` is already prefs-hydrated;
+    // still re-check agent after each await in case detect races this call.
     if (get().cwd) return;
     const lastCwd = await loadLastCwd();
     if (!lastCwd) return;
-    const savedSessionId = await loadSavedSessionId(lastCwd);
+    if (get().cwd) return;
+
+    const agentWhenLoadStarted = currentAgentId();
+    let savedSessionId = await loadSavedSessionId(
+      agentWhenLoadStarted,
+      lastCwd,
+    );
     // Bail if the user picked a folder while we were reading prefs.
     if (get().cwd) return;
+
+    const agentNow = currentAgentId();
+    const gate = resumeIdAfterAgentMayHaveFlipped(
+      agentWhenLoadStarted,
+      agentNow,
+      savedSessionId,
+    );
+    if (gate.stale) {
+      // Detect flipped selectedAgentId mid-hydrate — reload that vendor’s map
+      // so we never stamp Grok’s Resume id onto a Codex selection (or vice versa).
+      savedSessionId = await loadSavedSessionId(agentNow, lastCwd);
+      if (get().cwd) return;
+    } else {
+      savedSessionId = gate.savedSessionId;
+    }
+
     set({
       cwd: lastCwd,
       savedSessionId,
       error: null,
     });
+  },
+  /** Reload Resume id + clear transcript when switching agents (per-vendor). */
+  reloadForAgent: async (agentId: string) => {
+    const cwd = get().cwd;
+    const savedSessionId = cwd
+      ? await loadSavedSessionId(agentId, cwd)
+      : null;
+    set(sessionPatchAfterAgentSwitch(savedSessionId));
   },
   connect: async (mode = "new") => {
     const cwd = get().cwd;
@@ -223,10 +281,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // connected / sessionId / replay lines come from acp://status + acp://stream
       set({ busy: false });
     } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      // Invoke rejection path: status may also fire, but always drop a dead
+      // Resume id here so the button cannot retry the same stale session.
+      if (isSessionLoadFailedError(raw) && cwd) {
+        const agentId = currentAgentId();
+        void clearSavedSessionId(agentId, cwd);
+        set({
+          connected: false,
+          busy: false,
+          savedSessionId: null,
+          error: recoverableSessionLoadMessage(raw),
+        });
+        return;
+      }
       set({
         connected: false,
         busy: false,
-        error: e instanceof Error ? e.message : String(e),
+        error: raw,
       });
     }
   },
@@ -356,23 +428,34 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const loadSessionSupported =
           ev.payload.loadSessionSupported ?? get().loadSessionSupported;
 
+        // Persist only after handshake completes (!busy). Mid-Resume status
+        // used to emit sessionId while busy and re-save a dead id over clear.
         if (
-          ev.payload.connected &&
-          sessionId &&
+          shouldPersistConnectedSessionId({
+            connected: !!ev.payload.connected,
+            sessionId,
+            busy: !!ev.payload.busy,
+            error: ev.payload.error,
+          }) &&
           cwd &&
-          !ev.payload.error
+          sessionId
         ) {
-          void saveSessionPrefs(cwd, sessionId).then(() => {
+          const agentId = currentAgentId();
+          void saveSessionPrefs(agentId, cwd, sessionId).then(() => {
             set({ savedSessionId: sessionId });
           });
         }
 
         // Corrupt / unknown resume id: drop the stale prefs entry so Resume
-        // does not keep failing; New session remains available.
+        // does not keep failing; Connect (New session) remains available.
         const loadFailed =
           !!ev.payload.error && isSessionLoadFailedError(ev.payload.error);
+        const statusError = loadFailed
+          ? recoverableSessionLoadMessage(ev.payload.error!)
+          : (ev.payload.error ?? null);
         if (loadFailed && cwd) {
-          void clearSavedSessionId(cwd).then(() => {
+          const agentId = currentAgentId();
+          void clearSavedSessionId(agentId, cwd).then(() => {
             set({ savedSessionId: null });
           });
         }
@@ -382,7 +465,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           cwd: cwd ?? get().cwd,
           sessionId: sessionId ?? (ev.payload.connected ? get().sessionId : null),
           busy: ev.payload.busy,
-          error: ev.payload.error ?? null,
+          error: statusError,
           loadSessionSupported,
           // Agent exit / Disconnect via status: drop stale Ask so Allow cannot
           // hit a torn-down oneshot after the modal was left open.
