@@ -86,6 +86,9 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 ## Deferred
 
 - Mac UI E2E for Claude Connect/Ask/Resume (manual)
-- Permission card placement: modal vs inline
 - Packaging / notarization / auto-update — M5 first slice: macOS `app`+`dmg` bundle metadata, entitlements + Info.plist placeholders, empty `resources`/`externalBin` (no vendor CLIs). See [PACKAGING.md](PACKAGING.md). Notarization / auto-update still deferred.
 - UI language (start simple; not a protocol blocker)
+
+## Done (recent)
+
+- Permission card placement: inline in the chat transcript (no full-viewport modal)

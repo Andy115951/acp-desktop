@@ -1,4 +1,4 @@
-/** Pure helpers for the Ask permission modal (unit-tested; no Tauri). */
+/** Pure helpers for the Ask permission card (unit-tested; no Tauri). */
 
 export type PermissionOption = { id: string; name: string; kind: string };
 
@@ -31,6 +31,18 @@ export function permissionHotkeyAction(
   return null;
 }
 
+/**
+ * Index of the option that should receive initial focus when Ask opens:
+ * first Allow* kind, else 0. Returns -1 when options is empty.
+ */
+export function permissionFocusOptionIndex(
+  options: PermissionOption[],
+): number {
+  if (options.length === 0) return -1;
+  const allowIdx = options.findIndex((o) => o.kind.startsWith("Allow"));
+  return allowIdx >= 0 ? allowIdx : 0;
+}
+
 /** Whether the host error means Ask was already cleared (Cancel / Disconnect). */
 export function isNoPendingPermissionError(message: string): boolean {
   return /no pending permission/i.test(message);
@@ -38,7 +50,7 @@ export function isNoPendingPermissionError(message: string): boolean {
 
 /**
  * Stale respond_permission id: host kept the real Ask oneshot.
- * Do not dismiss the modal and do not surface a red error banner.
+ * Do not dismiss the card and do not surface a red error banner.
  */
 export function isStalePermissionError(message: string): boolean {
   return /stale permission request id/i.test(message);
@@ -55,4 +67,3 @@ export function isQuietPermissionHostError(message: string): boolean {
 export function shouldDismissAskOnDisconnect(connected: boolean): boolean {
   return !connected;
 }
-
