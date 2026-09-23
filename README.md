@@ -112,7 +112,7 @@ npm run tauri:fake
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the same `cargo test` + `tsc` + `vitest` checks on push/PR.
 
-In the app, use the **Dev: fake ACP agent** toggle (same process-env override; not persisted). Then: Pick folder → Connect → Send any prompt → permission modal Allow/Reject (keys: **a**/**Enter** Allow, **r** Reject, **Esc** Cancel; toolbar Cancel also clears a pending Ask) → Disconnect → **Resume** (expect `fake-agent: resumed` replay; prompt still asks permission).
+In the app, use the **Dev: fake ACP agent** toggle (same process-env override; not persisted). Then: Pick folder → Connect → Send any prompt → inline permission card Allow/Reject (keys: **a**/**Enter** Allow, **r** Reject, **Esc** Cancel; toolbar Cancel also clears a pending Ask) → Disconnect → **Resume** (expect `fake-agent: resumed` replay; prompt still asks permission).
 
 Env alternatives:
 
@@ -159,7 +159,6 @@ Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & no
 
 - M4 Mac UI E2E: real Codex Connect / Ask / Resume (PR #12; Linux `tauri:fake` covers Switch hydrate + fake override)
 - Mac UI E2E: real Claude Connect / Ask / Resume (manual; needs local Claude login)
-- Permission card: modal vs inline in the chat thread
 
 ## Non-goals
 

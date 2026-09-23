@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { PermissionCard } from "./PermissionCard";
 import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
@@ -101,10 +102,16 @@ export default function App() {
   }, [permission, respondPermission]);
 
   const allowButtonRef = useRef<HTMLButtonElement | null>(null);
+  const permissionCardRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!permission) return;
     // Focus first Allow* (else first option) so Mac E2E keys land on the card.
     allowButtonRef.current?.focus();
+    // Keep the inline Ask card in view inside the transcript scroll region.
+    permissionCardRef.current?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth",
+    });
   }, [permission]);
 
   const selected = agents.find((a) => a.id === selectedAgentId);
@@ -382,7 +389,7 @@ export default function App() {
         ) : null}
 
         <div className="h-64 overflow-y-auto rounded-lg border border-slate-800 bg-black/30 p-3 text-sm space-y-2">
-          {lines.length === 0 ? (
+          {lines.length === 0 && !permission ? (
             <p className="text-slate-600">Transcript appears here…</p>
           ) : (
             lines.map((line) => (
@@ -406,6 +413,15 @@ export default function App() {
               </div>
             ))
           )}
+          {permission ? (
+            <div ref={permissionCardRef}>
+              <PermissionCard
+                permission={permission}
+                allowButtonRef={allowButtonRef}
+                onRespond={(id) => void respondPermission(id)}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex gap-2">
@@ -453,59 +469,6 @@ export default function App() {
         </div>
       </section>
 
-      {permission ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl space-y-3">
-            <h3 className="text-base font-semibold text-white">
-              {permission.title}
-            </h3>
-            <p className="text-xs text-slate-400 break-all">{permission.detail}</p>
-            <div className="flex flex-wrap gap-2 pt-2">
-              {permission.options.map((opt, idx) => {
-                const isAllow = opt.kind.startsWith("Allow");
-                const focusFirst =
-                  isAllow
-                    ? permission.options.findIndex((o) =>
-                        o.kind.startsWith("Allow"),
-                      ) === idx
-                    : permission.options.findIndex((o) =>
-                        o.kind.startsWith("Allow"),
-                      ) < 0 && idx === 0;
-                return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  ref={focusFirst ? allowButtonRef : undefined}
-                  onClick={() => void respondPermission(opt.id)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                    isAllow
-                      ? "bg-emerald-700 text-white"
-                      : opt.kind.startsWith("Reject")
-                        ? "bg-red-800 text-white"
-                        : "border border-slate-600 text-slate-200"
-                  }`}
-                >
-                  {opt.name}
-                </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => void respondPermission(null)}
-                className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-300"
-              >
-                Cancel
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-500 pt-1">
-              Keys:{" "}
-              <kbd className="text-slate-400">a</kbd>/<kbd className="text-slate-400">Enter</kbd>{" "}
-              Allow · <kbd className="text-slate-400">r</kbd> Reject ·{" "}
-              <kbd className="text-slate-400">Esc</kbd> Cancel
-            </p>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

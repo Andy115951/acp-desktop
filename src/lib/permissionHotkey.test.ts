@@ -3,6 +3,7 @@ import {
   isNoPendingPermissionError,
   isQuietPermissionHostError,
   isStalePermissionError,
+  permissionFocusOptionIndex,
   permissionHotkeyAction,
   shouldDismissAskOnDisconnect,
 } from "./permissionHotkey";
@@ -98,3 +99,28 @@ describe("shouldDismissAskOnDisconnect", () => {
   });
 });
 
+
+describe("permissionFocusOptionIndex", () => {
+  it("prefers the first Allow* option", () => {
+    expect(
+      permissionFocusOptionIndex([
+        { id: "reject", name: "Reject", kind: "RejectOnce" },
+        { id: "allow", name: "Allow", kind: "AllowOnce" },
+        { id: "allow2", name: "Allow always", kind: "AllowAlways" },
+      ]),
+    ).toBe(1);
+  });
+
+  it("falls back to 0 when no Allow* kind", () => {
+    expect(
+      permissionFocusOptionIndex([
+        { id: "x", name: "X", kind: "Other" },
+        { id: "y", name: "Y", kind: "RejectOnce" },
+      ]),
+    ).toBe(0);
+  });
+
+  it("returns -1 for empty options", () => {
+    expect(permissionFocusOptionIndex([])).toBe(-1);
+  });
+});
