@@ -12,7 +12,7 @@ import type { SessionByCwd } from "./sessionPrefs";
 const agents = [
   { id: "grok", connectable: true },
   { id: "codex", connectable: true },
-  { id: "claude", connectable: false },
+  { id: "claude", connectable: true },
 ];
 
 describe("shouldDisconnectOnAgentSwitch", () => {
@@ -81,6 +81,19 @@ describe("resumeIdForAgent — no cross-vendor bleed", () => {
     expect(resumeIdForAgent("grok", cwd, get)).toBe("legacy-grok");
     expect(resumeIdForAgent("codex", cwd, get)).toBeNull();
   });
+
+  it("claude Resume stays isolated from grok/codex maps", () => {
+    const maps: Record<string, SessionByCwd> = {
+      "grok.sessionByCwd": { [cwd]: "grok-sess" },
+      "codex.sessionByCwd": { [cwd]: "codex-sess" },
+      "claude.sessionByCwd": { [cwd]: "claude-sess" },
+    };
+    const get = (key: string) => maps[key];
+    expect(resumeIdForAgent("claude", cwd, get)).toBe("claude-sess");
+    expect(resumeIdForAgent("claude", cwd, get)).not.toBe("grok-sess");
+    expect(resumeIdForAgent("claude", cwd, get)).not.toBe("codex-sess");
+    expect(resumeIdForAgent("grok", cwd, get)).not.toBe("claude-sess");
+  });
 });
 
 describe("resumeIdAfterAgentMayHaveFlipped (hydrate vs detect race)", () => {
@@ -107,8 +120,20 @@ describe("pickConnectableAgentId (selectedAgentId hydrate)", () => {
     expect(pickConnectableAgentId(agents, "codex")).toBe("codex");
   });
 
+  it("keeps saved claude id when connectable", () => {
+    expect(pickConnectableAgentId(agents, "claude")).toBe("claude");
+  });
+
   it("falls back when saved id is not connectable", () => {
-    expect(pickConnectableAgentId(agents, "claude")).toBe("grok");
+    expect(
+      pickConnectableAgentId(
+        [
+          { id: "grok", connectable: true },
+          { id: "placeholder", connectable: false },
+        ],
+        "placeholder",
+      ),
+    ).toBe("grok");
   });
 
   it("falls back when saved id is unknown", () => {
@@ -122,7 +147,10 @@ describe("pickConnectableAgentId (selectedAgentId hydrate)", () => {
 
   it("returns fallback when no agents are connectable", () => {
     expect(
-      pickConnectableAgentId([{ id: "claude", connectable: false }], "claude"),
+      pickConnectableAgentId(
+        [{ id: "placeholder", connectable: false }],
+        "placeholder",
+      ),
     ).toBe("grok");
   });
 });
@@ -131,10 +159,13 @@ describe("canSelectAgentId (persist gate)", () => {
   it("allows connectable agents", () => {
     expect(canSelectAgentId(agents, "grok")).toBe(true);
     expect(canSelectAgentId(agents, "codex")).toBe(true);
+    expect(canSelectAgentId(agents, "claude")).toBe(true);
   });
 
   it("blocks non-connectable placeholders", () => {
-    expect(canSelectAgentId(agents, "claude")).toBe(false);
+    expect(
+      canSelectAgentId([{ id: "placeholder", connectable: false }], "placeholder"),
+    ).toBe(false);
   });
 
   it("allows unknown id when list empty or id absent", () => {

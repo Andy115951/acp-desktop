@@ -16,19 +16,37 @@ export function agentAuthHint(
         "`CODEX_API_KEY` / `OPENAI_API_KEY`. ACP adapter: `codex-acp` or " +
         "`npx -y @agentclientprotocol/codex-acp`."
       );
+    case "claude":
+      return (
+        "Claude uses your local CLI auth: Claude Code login (Pro/Max), or " +
+        "`ANTHROPIC_API_KEY`. ACP adapter: `claude-agent-acp` or " +
+        "`npx -y @agentclientprotocol/claude-agent-acp`."
+      );
     default:
       return null;
   }
 }
 
 /**
- * Extra note when host reports Codex available only via `codex` (npx spawn).
+ * Extra note when host reports a vendor available only via CLI (npx spawn).
  * Prefer showing `AgentInfo.detail` from the host when present.
  */
-export function agentCodexNpxFallbackHint(detail: string | null | undefined): string | null {
+export function agentNpxFallbackHint(detail: string | null | undefined): string | null {
   if (!detail) return null;
   const lower = detail.toLowerCase();
-  if (lower.includes("npx") && lower.includes("codex")) return detail;
+  if (
+    lower.includes("npx") &&
+    (lower.includes("codex") || lower.includes("claude"))
+  ) {
+    return detail;
+  }
   return null;
+}
+
+/** @deprecated Use {@link agentNpxFallbackHint} */
+export function agentCodexNpxFallbackHint(
+  detail: string | null | undefined,
+): string | null {
+  return agentNpxFallbackHint(detail);
 }
 
