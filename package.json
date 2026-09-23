@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "tauri:fake": "cargo build -p fake-acp-agent && ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev",
     "test": "vitest run",
-    "smoke:codex-acp": "node scripts/smoke-codex-acp.mjs"
+    "smoke:codex-acp": "node scripts/smoke-codex-acp.mjs",
+    "tauri:build:macos": "tauri build --bundles app,dmg"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

@@ -51,7 +51,9 @@ Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2
 
 **Done on main:** [#4](https://github.com/Andy115951/acp-desktop/issues/4) M3 `AgentBackend` (`GrokBackend` + `connect_agent`).
 
-**In progress:** [#5](https://github.com/Andy115951/acp-desktop/issues/5) M4 — second backend **Codex** via `@agentclientprotocol/codex-acp`, Agents list + top Switch dropdown, per-vendor session prefs (`{agentId}.sessionByCwd`). Claude remains listed-not-wired. Next: M5 packaging.
+**Done on main:** [#5](https://github.com/Andy115951/acp-desktop/issues/5) M4 — Codex via `@agentclientprotocol/codex-acp`, Agents list + Switch dropdown, per-vendor session prefs (`{agentId}.sessionByCwd`) (merged [#12](https://github.com/Andy115951/acp-desktop/pull/12); Mac UI E2E waived). Claude remains listed-not-wired.
+
+**In progress:** [#6](https://github.com/Andy115951/acp-desktop/issues/6) M5 macOS packaging (`tauri build` → `.app` / `.dmg`; no vendor CLIs in the bundle). See [docs/PACKAGING.md](docs/PACKAGING.md).
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
@@ -106,13 +108,25 @@ ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
 
 `ACP_DESKTOP_FAKE_AGENT=1` resolves `target/debug/fake-acp-agent` from the workspace when the binary is not on PATH. Default for users remains `grok agent stdio`.
 
+
+## Build / release (macOS, M5)
+
+Ship a local `.app` / `.dmg` without bundling vendor CLIs:
+
+```bash
+npm install
+npm run tauri:build:macos
+```
+
+Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & notarization stay optional (set `APPLE_SIGNING_IDENTITY` when you have a Developer ID cert). Details: [docs/PACKAGING.md](docs/PACKAGING.md).
+
 ## Roadmap
 
 1. **Tauri skeleton + Grok detect** — done (M1 / [#2](https://github.com/Andy115951/acp-desktop/issues/2))
 2. **Grok ACP path** — done (M2 / [#3](https://github.com/Andy115951/acp-desktop/issues/3), [#8](https://github.com/Andy115951/acp-desktop/pull/8) + [#9](https://github.com/Andy115951/acp-desktop/pull/9))
 3. **AgentBackend** — done (M3 / [#4](https://github.com/Andy115951/acp-desktop/issues/4), [#11](https://github.com/Andy115951/acp-desktop/pull/11))
-4. **Multi-agent switch** — M4: Codex via `codex-acp` + switcher (in progress / [#5](https://github.com/Andy115951/acp-desktop/issues/5))
-5. **macOS packaging** — after the above works
+4. **Multi-agent switch** — done (M4 / [#5](https://github.com/Andy115951/acp-desktop/issues/5), [#12](https://github.com/Andy115951/acp-desktop/pull/12))
+5. **macOS packaging** — in progress (M5 / [#6](https://github.com/Andy115951/acp-desktop/issues/6)); see [docs/PACKAGING.md](docs/PACKAGING.md)
 
 ## Tech notes
 
