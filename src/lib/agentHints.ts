@@ -1,5 +1,7 @@
 /** Pure UI hints for vendor auth / install (unit-tested; no Tauri). */
 
+import { t, type Locale } from "./i18n";
+
 /**
  * Short Agents-panel note for the selected connectable agent.
  * Returns null when no hint is needed (or fake-agent override is on).
@@ -7,21 +9,14 @@
 export function agentAuthHint(
   agentId: string,
   usingFake: boolean,
+  locale: Locale = "en",
 ): string | null {
   if (usingFake) return null;
   switch (agentId.trim()) {
     case "codex":
-      return (
-        "Codex uses your local CLI auth: ChatGPT login via `codex`, or " +
-        "`CODEX_API_KEY` / `OPENAI_API_KEY`. ACP adapter: `codex-acp` or " +
-        "`npx -y @agentclientprotocol/codex-acp`."
-      );
+      return t(locale, "auth.codex");
     case "claude":
-      return (
-        "Claude uses your local CLI auth: Claude Code login (Pro/Max), or " +
-        "`ANTHROPIC_API_KEY`. ACP adapter: `claude-agent-acp` or " +
-        "`npx -y @agentclientprotocol/claude-agent-acp`."
-      );
+      return t(locale, "auth.claude");
     default:
       return null;
   }
@@ -49,4 +44,3 @@ export function agentCodexNpxFallbackHint(
 ): string | null {
   return agentNpxFallbackHint(detail);
 }
-
