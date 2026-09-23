@@ -17,6 +17,8 @@ export function agentAuthHint(
       return t(locale, "auth.codex");
     case "claude":
       return t(locale, "auth.claude");
+    case "copilot":
+      return t(locale, "auth.copilot");
     default:
       return null;
   }

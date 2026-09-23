@@ -12,6 +12,7 @@
     "test": "vitest run",
     "smoke:codex-acp": "node scripts/smoke-codex-acp.mjs",
     "smoke:claude-acp": "node scripts/smoke-claude-acp.mjs",
+    "smoke:copilot-acp": "node scripts/smoke-copilot-acp.mjs",
     "tauri:build:macos": "tauri build --bundles app,dmg"
   },
   "dependencies": {

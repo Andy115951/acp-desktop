@@ -13,6 +13,7 @@ const agents = [
   { id: "grok", connectable: true },
   { id: "codex", connectable: true },
   { id: "claude", connectable: true },
+  { id: "copilot", connectable: true },
 ];
 
 describe("shouldDisconnectOnAgentSwitch", () => {
@@ -94,6 +95,20 @@ describe("resumeIdForAgent — no cross-vendor bleed", () => {
     expect(resumeIdForAgent("claude", cwd, get)).not.toBe("codex-sess");
     expect(resumeIdForAgent("grok", cwd, get)).not.toBe("claude-sess");
   });
+
+  it("copilot Resume stays isolated from other vendor maps", () => {
+    const maps: Record<string, SessionByCwd> = {
+      "grok.sessionByCwd": { [cwd]: "grok-sess" },
+      "codex.sessionByCwd": { [cwd]: "codex-sess" },
+      "claude.sessionByCwd": { [cwd]: "claude-sess" },
+      "copilot.sessionByCwd": { [cwd]: "copilot-sess" },
+    };
+    const get = (key: string) => maps[key];
+    expect(resumeIdForAgent("copilot", cwd, get)).toBe("copilot-sess");
+    expect(resumeIdForAgent("copilot", cwd, get)).not.toBe("grok-sess");
+    expect(resumeIdForAgent("copilot", cwd, get)).not.toBe("claude-sess");
+    expect(resumeIdForAgent("claude", cwd, get)).not.toBe("copilot-sess");
+  });
 });
 
 describe("resumeIdAfterAgentMayHaveFlipped (hydrate vs detect race)", () => {
@@ -122,6 +137,10 @@ describe("pickConnectableAgentId (selectedAgentId hydrate)", () => {
 
   it("keeps saved claude id when connectable", () => {
     expect(pickConnectableAgentId(agents, "claude")).toBe("claude");
+  });
+
+  it("keeps saved copilot id when connectable", () => {
+    expect(pickConnectableAgentId(agents, "copilot")).toBe("copilot");
   });
 
   it("falls back when saved id is not connectable", () => {
@@ -160,6 +179,7 @@ describe("canSelectAgentId (persist gate)", () => {
     expect(canSelectAgentId(agents, "grok")).toBe(true);
     expect(canSelectAgentId(agents, "codex")).toBe(true);
     expect(canSelectAgentId(agents, "claude")).toBe(true);
+    expect(canSelectAgentId(agents, "copilot")).toBe(true);
   });
 
   it("blocks non-connectable placeholders", () => {

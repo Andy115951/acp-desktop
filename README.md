@@ -4,7 +4,7 @@ Unofficial desktop **ACP client**: one window to switch the local coding-agent C
 
 **Not affiliated with, endorsed by, or a product of xAI, OpenAI, Anthropic, or any other vendor.** Their names and marks belong to them. This repo does not ship vendor CLIs, installers, or credentials.
 
-各家 CLI 你自己装、自己登录。本应用只拉起它们的 ACP stdio（例如 `grok agent stdio`、`codex-acp`、`claude-agent-acp`）。会话仍在各家自己的目录里，能和原 TUI 接着聊。改文件、跑命令默认要你点头。
+各家 CLI 你自己装、自己登录。本应用只拉起它们的 ACP stdio（例如 `grok agent stdio`、`codex-acp`、`claude-agent-acp`、`copilot --acp`）。会话仍在各家自己的目录里，能和原 TUI 接着聊。改文件、跑命令默认要你点头。
 
 ## What it is
 
@@ -24,7 +24,7 @@ ACP = [Agent Client Protocol](https://agentclientprotocol.com): JSON-RPC between
 | Grok Build | `grok agent stdio` |
 | Claude Code | usually `@agentclientprotocol/claude-agent-acp` |
 | Codex | `@agentclientprotocol/codex-acp` |
-| Copilot CLI | `copilot --acp` (preview) — later |
+| Copilot CLI | `copilot --acp` (public preview) |
 | Anything without ACP | out of scope |
 
 ## Architecture
@@ -34,7 +34,7 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
                                  |
                                  |  agent-client-protocol (ACP v1)
                                  v
-                           grok agent stdio | codex-acp | claude-agent-acp
+                           grok agent stdio | codex-acp | claude-agent-acp | copilot --acp
 ```
 
 - UI never talks to the CLI directly; the Rust host owns spawn, handshake, streaming, and permission replies.
@@ -57,9 +57,11 @@ Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2
 
 **Done on main:** [#14](https://github.com/Andy115951/acp-desktop/issues/14) M6 Claude via `@agentclientprotocol/claude-agent-acp` (merged [#15](https://github.com/Andy115951/acp-desktop/pull/15) as `ae0df18`) — detect `claude-agent-acp` **or** `claude`, spawn binary or `npx -y`, Agents list selectable, per-vendor session prefs.
 
-**This PR (M7):** UI language (`en` / `zh-CN`) — header locale toggle, `tauri-plugin-store` key `ui.locale`, chrome strings in `App.tsx` + `PermissionCard.tsx` (no agent transcript / protocol translation).
+**Done on main:** [#17](https://github.com/Andy115951/acp-desktop/issues/17) M7 UI language (`en` / `zh-CN`) — header locale toggle, `tauri-plugin-store` key `ui.locale`, chrome strings in `App.tsx` + `PermissionCard.tsx` (merged [#18](https://github.com/Andy115951/acp-desktop/pull/18) as `718de50`).
 
-Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6 Done; [#17](https://github.com/Andy115951/acp-desktop/issues/17) M7).
+**This PR (M8):** [#19](https://github.com/Andy115951/acp-desktop/issues/19) Copilot via `copilot --acp` — detect `copilot` on PATH, Agents list selectable, per-vendor session prefs (`copilot.sessionByCwd`).
+
+Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6 + #14 + #17 Done; [#19](https://github.com/Andy115951/acp-desktop/issues/19) M8).
 
 ## Develop
 
@@ -95,6 +97,19 @@ Needs a local Claude Code login (Pro/Max) or `ANTHROPIC_API_KEY`. Does **not** r
 ```bash
 npm run smoke:claude-acp
 # optional: CLAUDE_ACP_SMOKE_SKIP_PROMPT=1 npm run smoke:claude-acp
+```
+
+### Copilot ACP headless Connect/Ask/Resume (Mac)
+
+Spawns the same argv as `CopilotBackend` (`copilot --acp`), then over stdio NDJSON runs:
+
+`initialize` → `session/new` → `session/prompt` → fresh-process `session/load` (when `loadSession` is advertised)
+
+Needs a local GitHub Copilot CLI install + GitHub login. Does **not** replace Mac UI Connect/Ask/Resume clicks.
+
+```bash
+npm run smoke:copilot-acp
+# optional: COPILOT_ACP_SMOKE_SKIP_PROMPT=1 npm run smoke:copilot-acp
 ```
 
 ### Fake ACP agent (permission smoke)
@@ -146,7 +161,8 @@ Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & no
 4. **Multi-agent switch** — done (M4 / [#5](https://github.com/Andy115951/acp-desktop/issues/5), [#12](https://github.com/Andy115951/acp-desktop/pull/12))
 5. **macOS packaging** — done (M5 / [#6](https://github.com/Andy115951/acp-desktop/issues/6)); see [docs/PACKAGING.md](docs/PACKAGING.md)
 6. **Claude backend** — done (M6 / [#14](https://github.com/Andy115951/acp-desktop/issues/14), [#15](https://github.com/Andy115951/acp-desktop/pull/15))
-7. **UI language** — this PR (M7 / [#17](https://github.com/Andy115951/acp-desktop/issues/17)): `en` / `zh-CN` chrome locale
+7. **UI language** — done (M7 / [#17](https://github.com/Andy115951/acp-desktop/issues/17), [#18](https://github.com/Andy115951/acp-desktop/pull/18)): `en` / `zh-CN` chrome locale
+8. **Copilot backend** — this PR (M8 / [#19](https://github.com/Andy115951/acp-desktop/issues/19)): `copilot --acp`
 
 ## Tech notes
 
@@ -160,9 +176,8 @@ Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & no
 
 ### Still open
 
-- Mac UI E2E for real Codex / Claude Connect / Ask / Resume — **waived** as a merge/dev blocker (headless `smoke:codex-acp` / `smoke:claude-acp` + fake-agent CI remain)
+- Mac UI E2E for real Codex / Claude / Copilot Connect / Ask / Resume — **waived** as a merge/dev blocker (headless `smoke:codex-acp` / `smoke:claude-acp` / `smoke:copilot-acp` + fake-agent CI remain)
 - Packaging notarization / auto-update (needs Apple Developer ID; see [docs/PACKAGING.md](docs/PACKAGING.md))
-- UI language (`en` / `zh-CN`) — tracked by [#17](https://github.com/Andy115951/acp-desktop/issues/17) (this PR)
 
 ## Non-goals
 

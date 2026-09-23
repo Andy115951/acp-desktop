@@ -5,6 +5,7 @@
 //! - [`GrokBackend`] — `grok agent stdio`
 //! - [`CodexBackend`] — `codex-acp` / `npx -y @agentclientprotocol/codex-acp` (M4)
 //! - [`ClaudeBackend`] — `claude-agent-acp` / `npx -y @agentclientprotocol/claude-agent-acp` (M6)
+//! - [`CopilotBackend`] — `copilot --acp` (M8; Copilot CLI ACP public preview)
 
 use serde::Serialize;
 use std::env;
@@ -198,6 +199,43 @@ pub fn claude_availability_detail(
 
 static CLAUDE_BACKEND: ClaudeBackend = ClaudeBackend;
 
+/// GitHub Copilot CLI ACP (public preview) — `copilot --acp`.
+///
+/// Detects the `copilot` binary on `PATH`. No separate npx adapter package
+/// (unlike Codex/Claude). Stdio is the CLI default; we pass `--acp` only
+/// (docs allow optional `--stdio` for disambiguation).
+pub struct CopilotBackend;
+
+impl AgentBackend for CopilotBackend {
+    fn id(&self) -> &'static str {
+        "copilot"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Copilot CLI"
+    }
+
+    fn binary(&self) -> &'static str {
+        "copilot"
+    }
+
+    fn detect(&self) -> bool {
+        binary_named_on_path(self.binary())
+    }
+
+    fn default_argv(&self) -> Vec<String> {
+        copilot_spawn_argv()
+    }
+}
+
+/// Pure spawn argv for Copilot ACP stdio (no npx fallback).
+pub fn copilot_spawn_argv() -> Vec<String> {
+    vec!["copilot".into(), "--acp".into()]
+}
+
+static COPILOT_BACKEND: CopilotBackend = CopilotBackend;
+
+
 /// Built-in catalog entry (detect list). Only `backend`-bearing rows are
 /// connectable.
 #[derive(Clone, Copy)]
@@ -229,6 +267,12 @@ static BUILTIN_AGENTS: &[BuiltinAgent] = &[
         binary: "claude-agent-acp",
         backend: Some(&CLAUDE_BACKEND),
     },
+    BuiltinAgent {
+        id: "copilot",
+        name: "Copilot CLI",
+        binary: "copilot",
+        backend: Some(&COPILOT_BACKEND),
+    },
 ];
 
 pub fn builtin_agents() -> &'static [BuiltinAgent] {
@@ -245,7 +289,7 @@ pub fn lookup_backend(agent_id: &str) -> Result<&'static dyn AgentBackend, Strin
         if entry.id == id {
             return entry.backend.ok_or_else(|| {
                 format!(
-                    "agent `{id}` is listed but not wired yet. Use `grok`/`codex`/`claude` or enable the fake/custom override."
+                    "agent `{id}` is listed but not wired yet. Use `grok`/`codex`/`claude`/`copilot` or enable the fake/custom override."
                 )
             });
         }
@@ -474,6 +518,13 @@ pub fn missing_agent_message(backend: &dyn AgentBackend) -> String {
             "`ANTHROPIC_API_KEY`."
         )
         .into(),
+        "copilot" => concat!(
+            "Copilot CLI ACP not found on PATH. Install the GitHub Copilot CLI ",
+            "(`copilot`) and ensure it supports `copilot --acp` (public preview). ",
+            "Auth stays with the local CLI (GitHub login). ",
+            "Or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD."
+        )
+        .into(),
         "grok" => format!(
             "`{}` not found on PATH. Install Grok Build CLI, or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD.",
             backend.binary()
@@ -562,6 +613,9 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
         || raw.contains("Claude auth:")
         || raw.contains("Claude ACP:")
         || raw.contains("Claude usage:")
+        || raw.contains("Copilot auth:")
+        || raw.contains("Copilot ACP:")
+        || raw.contains("Copilot usage:")
     {
         return raw.to_string();
     }
@@ -599,6 +653,19 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
         "claude" => format!(
             "{raw}\n\nIf this looks like missing install or auth: install `claude`/`claude-agent-acp`,              complete Claude Code login (or set `ANTHROPIC_API_KEY`),              then retry Connect."
         ),
+        "copilot" if looks_like_usage_limit(raw) => format!(
+            "{raw}\n\nCopilot usage: plan or rate limit hit — wait and retry, or check              GitHub Copilot usage. This is not a missing `copilot` install or login."
+        ),
+        "copilot" if looks_like_auth_failure(raw) => format!(
+            "{raw}\n\nCopilot auth: sign in via the local `copilot` CLI (GitHub),              then retry Connect."
+        ),
+        "copilot" if looks_like_spawn_failure(raw) => format!(
+            "{raw}\n\nCopilot ACP: install the GitHub Copilot CLI and ensure `copilot` is on PATH              (`copilot --acp` starts the ACP server over stdio)."
+        ),
+        "copilot" if raw.to_ascii_lowercase().contains("prompt failed") => raw.to_string(),
+        "copilot" => format!(
+            "{raw}\n\nIf this looks like missing install or auth: install `copilot`,              complete GitHub login in the Copilot CLI, then retry Connect."
+        ),
         _ => raw.to_string(),
     }
 }
@@ -614,7 +681,7 @@ mod tests {
     use super::TEST_ENV_LOCK as ENV_LOCK;
 
     #[test]
-    fn builtin_table_lists_grok_codex_claude_connectable() {
+    fn builtin_table_lists_grok_codex_claude_copilot_connectable() {
         let agents = detect_builtin_agents();
         let grok = agents.iter().find(|a| a.id == "grok").expect("grok");
         assert!(grok.connectable);
@@ -625,6 +692,9 @@ mod tests {
         let claude = agents.iter().find(|a| a.id == "claude").expect("claude");
         assert!(claude.connectable);
         assert_eq!(claude.binary, "claude-agent-acp");
+        let copilot = agents.iter().find(|a| a.id == "copilot").expect("copilot");
+        assert!(copilot.connectable);
+        assert_eq!(copilot.binary, "copilot");
     }
 
     #[test]
@@ -947,5 +1017,87 @@ mod tests {
         env::remove_var("ACP_DESKTOP_FAKE_AGENT");
     }
 
+    #[test]
+    fn lookup_backend_copilot_ok() {
+        let b = lookup_backend("copilot").unwrap();
+        assert_eq!(b.id(), "copilot");
+        assert_eq!(b.binary(), "copilot");
+        assert_eq!(b.default_argv(), vec!["copilot", "--acp"]);
+    }
+
+    #[test]
+    fn copilot_spawn_argv_is_acp_stdio() {
+        assert_eq!(
+            copilot_spawn_argv(),
+            vec!["copilot".to_string(), "--acp".to_string()]
+        );
+    }
+
+    #[test]
+    fn missing_agent_message_copilot_mentions_cli() {
+        let msg = missing_agent_message(&COPILOT_BACKEND);
+        assert!(msg.contains("Copilot"), "{msg}");
+        assert!(msg.contains("copilot --acp") || msg.contains("`copilot`"), "{msg}");
+    }
+
+    #[test]
+    fn enrich_connect_error_copilot_auth() {
+        let out = enrich_connect_error("copilot", "initialize failed: unauthorized");
+        assert!(out.starts_with("initialize failed"), "{out}");
+        assert!(out.contains("Copilot auth:"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_copilot_spawn() {
+        let out = enrich_connect_error(
+            "copilot",
+            "Failed to configure agent: No such file or directory",
+        );
+        assert!(out.contains("Copilot ACP:"), "{out}");
+        assert!(out.contains("copilot"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_copilot_usage_limit_not_auth() {
+        let raw = "prompt failed: usageLimitExceeded";
+        let out = enrich_connect_error("copilot", raw);
+        assert!(out.starts_with("prompt failed"), "{out}");
+        assert!(out.contains("Copilot usage:"), "{out}");
+        assert!(!out.contains("Copilot auth:"), "{out}");
+        assert!(!out.contains("Copilot ACP:"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_preserves_session_load_for_copilot() {
+        let raw = "session/load failed: unknown id. You can start a New session.";
+        let out = enrich_connect_error("copilot", raw);
+        assert_eq!(out, raw);
+    }
+
+    #[test]
+    fn resolve_copilot_uses_spawn_helper_without_override() {
+        let _g = ENV_LOCK.lock().unwrap();
+        env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+        let argv = resolve_agent_command(&COPILOT_BACKEND).unwrap();
+        assert_eq!(argv, copilot_spawn_argv());
+    }
+
+    #[test]
+    fn resolve_copilot_respects_fake_override() {
+        // Switch→Copilot with tauri:fake must still spawn fake-acp-agent.
+        let _g = ENV_LOCK.lock().unwrap();
+        env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
+        let argv = resolve_agent_command(&COPILOT_BACKEND).expect("fake resolves for Copilot");
+        assert!(
+            argv[0].ends_with("fake-acp-agent") || argv[0].ends_with("fake-acp-agent.exe"),
+            "unexpected fake argv for Copilot: {argv:?}"
+        );
+        assert!(using_override_agent());
+        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+    }
+
 
 }
+
