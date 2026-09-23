@@ -83,5 +83,6 @@ describe("dictionary coverage", () => {
   it("keeps auth hints searchable in English", () => {
     expect(t("en", "auth.codex")).toMatch(/CODEX_API_KEY|OPENAI_API_KEY/);
     expect(t("en", "auth.claude")).toMatch(/ANTHROPIC_API_KEY/);
+    expect(t("en", "auth.copilot")).toMatch(/copilot --acp|GitHub/);
   });
 });

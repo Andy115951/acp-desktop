@@ -191,7 +191,7 @@ mod tests {
     use crate::agent_backend::TEST_ENV_LOCK as ENV_LOCK;
 
     #[test]
-    fn detect_agents_includes_grok_codex_claude_connectable() {
+    fn detect_agents_includes_grok_codex_claude_copilot_connectable() {
         let agents = detect_agents();
         let grok = agents.iter().find(|a| a.id == "grok").expect("grok");
         assert_eq!(grok.binary, "grok");
@@ -200,6 +200,9 @@ mod tests {
         let claude = agents.iter().find(|a| a.id == "claude").expect("claude");
         assert!(claude.connectable);
         assert_eq!(claude.binary, "claude-agent-acp");
+        let copilot = agents.iter().find(|a| a.id == "copilot").expect("copilot");
+        assert!(copilot.connectable);
+        assert_eq!(copilot.binary, "copilot");
     }
 
     #[test]
@@ -263,5 +266,13 @@ mod tests {
         let b = lookup_backend("claude").expect("claude should be connectable");
         assert_eq!(b.id(), "claude");
         assert_eq!(b.binary(), "claude-agent-acp");
+    }
+
+    #[test]
+    fn lookup_copilot_is_wired() {
+        let b = lookup_backend("copilot").expect("copilot should be connectable");
+        assert_eq!(b.id(), "copilot");
+        assert_eq!(b.binary(), "copilot");
+        assert_eq!(b.default_argv(), vec!["copilot", "--acp"]);
     }
 }

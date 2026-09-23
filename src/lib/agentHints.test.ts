@@ -20,9 +20,16 @@ describe("agentAuthHint", () => {
     expect(hint!).toMatch(/claude-agent-acp|npx/);
   });
 
+  it("returns Copilot auth/install note", () => {
+    const hint = agentAuthHint("copilot", false);
+    expect(hint).toBeTruthy();
+    expect(hint!).toMatch(/GitHub|copilot --acp|Copilot CLI/);
+  });
+
   it("hides hint when fake agent is on", () => {
     expect(agentAuthHint("codex", true)).toBeNull();
     expect(agentAuthHint("claude", true)).toBeNull();
+    expect(agentAuthHint("copilot", true)).toBeNull();
   });
 
   it("no hint for grok by default", () => {

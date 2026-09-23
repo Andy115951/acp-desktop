@@ -19,7 +19,7 @@ Living notes for how `acp-desktop` is meant to be built. Product scope stays in 
 ┌──────────────────▼──────────────────────────┐
 │  Local agent process                        │
 │  e.g. `grok agent stdio` / `codex-acp` /    │
-│  `claude-agent-acp`                         │
+│  `claude-agent-acp` / `copilot --acp`       │
 └─────────────────────────────────────────────┘
 ```
 
@@ -37,6 +37,7 @@ Implementations in `src-tauri/src/agent_backend.rs`:
 - **GrokBackend** — `grok agent stdio`
 - **CodexBackend** (M4) — `codex-acp` if on `PATH`, else `npx -y @agentclientprotocol/codex-acp`; detect via `codex-acp` **or** `codex`
 - **ClaudeBackend** (M6) — `claude-agent-acp` if on `PATH`, else `npx -y @agentclientprotocol/claude-agent-acp`; detect via `claude-agent-acp` **or** `claude`
+- **CopilotBackend** (M8) — `copilot --acp`; detect via `copilot` on `PATH` (no npx adapter)
 
 Host commands: `detect_agents`, `connect_agent(agent_id, …)`, `disconnect_agent` — UI never imports vendor spawn details.
 ACP session ops (`initialize` / `session/*` / permission replies) stay on the shared `AcpSession` bridge (protocol-identical for stdio agents).
@@ -77,18 +78,20 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 - In-repo crate `tools/fake-acp-agent`: ACP v1 stdio agent that **always** `session/request_permission`s on prompt (allow → stream text + EndTurn; reject → EndTurn with no side-effect text). Advertises `loadSession` and implements `session/load` for `fake-session-N` ids (replay `fake-agent: resumed` before the load response; unknown ids → invalid params) so Mac `tauri:fake` can exercise Disconnect→Resume without Grok.
 - Host override: `ACP_DESKTOP_AGENT_CMD` (full command) or `ACP_DESKTOP_FAKE_AGENT=1` (PATH, else workspace `target/{debug,release}/fake-acp-agent`). Default remains `grok agent stdio`.
 - Dev UI toggle sets the same process env for the running app (not persisted). `npm run tauri:fake` is the one-command smoke entry.
-- Fake override is **vendor-agnostic**: with `ACP_DESKTOP_FAKE_AGENT=1` (or the Dev toggle), `connect_agent("codex")` / `connect_agent("claude")` still spawns `fake-acp-agent`. UI Connect stays enabled for a missing-but-connectable agent when fake is on (`canConnectSelectedAgent`).
+- Fake override is **vendor-agnostic**: with `ACP_DESKTOP_FAKE_AGENT=1` (or the Dev toggle), `connect_agent("codex")` / `connect_agent("claude")` / `connect_agent("copilot")` still spawns `fake-acp-agent`. UI Connect stays enabled for a missing-but-connectable agent when fake is on (`canConnectSelectedAgent`).
 - Headless Codex ACP smoke (local, not CI): `npm run smoke:codex-acp` — same wire path as `codex_spawn_argv`.
 - Headless Claude ACP smoke (local, not CI): `npm run smoke:claude-acp` — same wire path as `claude_spawn_argv` (`claude-agent-acp` or `npx -y @agentclientprotocol/claude-agent-acp`); needs local Claude login / `ANTHROPIC_API_KEY`.
-- Linux `tauri:fake` can hydrate `selectedAgentId` + `lastCwd` from prefs to smoke Switch→Codex/Claude without Mac GUI (per-vendor Resume). Scripted WebKit clicks under Xvfb are unreliable (no AT-SPI); full Connect/Ask/Resume click path remains Mac UI E2E.
+- Headless Copilot ACP smoke (local, not CI): `npm run smoke:copilot-acp` — same wire path as `copilot_spawn_argv` (`copilot --acp`); needs local Copilot CLI + GitHub login.
+- Linux `tauri:fake` can hydrate `selectedAgentId` + `lastCwd` from prefs to smoke Switch→Codex/Claude/Copilot without Mac GUI (per-vendor Resume). Scripted WebKit clicks under Xvfb are unreliable (no AT-SPI); full Connect/Ask/Resume click path remains Mac UI E2E.
 - Host `drain_load_replay` waits up to 2s for the first ActiveSession update then 250ms idle. Automated: `cargo test -p fake-acp-agent` + `cargo test -p acp-desktop` + `tsc` + vitest; GitHub Actions CI runs these on push/PR. Does not replace Mac UI E2E for permission cards / Resume.
 
 ## Deferred
 
-- Mac UI E2E for real Codex / Claude Connect/Ask/Resume — waived as merge/dev blocker (manual when useful)
+- Mac UI E2E for real Codex / Claude / Copilot Connect/Ask/Resume — waived as merge/dev blocker (manual when useful)
 - Packaging / notarization / auto-update — M5 first slice: macOS `app`+`dmg` bundle metadata, entitlements + Info.plist placeholders, empty `resources`/`externalBin` (no vendor CLIs). See [PACKAGING.md](PACKAGING.md). Notarization / auto-update still deferred.
 
 ## Done (recent)
 
 - Permission card placement: inline in the chat transcript (no full-viewport modal)
 - UI language (`en` / `zh-CN`): tiny dictionary + header toggle; prefs key `ui.locale` (chrome only; no agent transcript / protocol translation)
+- CopilotBackend (M8): detect `copilot`, spawn `copilot --acp`, Agents list + per-vendor `copilot.sessionByCwd`

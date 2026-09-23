@@ -23,6 +23,8 @@ describe("prefs keys", () => {
   it("scopes session maps per agent id", () => {
     expect(sessionPrefsKey("grok")).toBe("grok.sessionByCwd");
     expect(sessionPrefsKey("codex")).toBe("codex.sessionByCwd");
+    expect(sessionPrefsKey("claude")).toBe("claude.sessionByCwd");
+    expect(sessionPrefsKey("copilot")).toBe("copilot.sessionByCwd");
     expect(sessionPrefsKey("  ")).toBe("grok.sessionByCwd");
   });
 });

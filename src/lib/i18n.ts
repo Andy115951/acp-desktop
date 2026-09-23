@@ -64,14 +64,15 @@ export type MessageKey =
   | "permission.cancel"
   | "permission.hotkeys"
   | "auth.codex"
-  | "auth.claude";
+  | "auth.claude"
+  | "auth.copilot";
 
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
   "badge.acpClient": "ACP client",
   "header.taglineBefore":
-    "ACP host path: last folder restores on launch; switch Grok / Codex / Claude in the Agents list (histories stay per-vendor). Connect via host APIs, stream a turn, approve tools with Ask, resume via ",
+    "ACP host path: last folder restores on launch; switch Grok / Codex / Claude / Copilot in the Agents list (histories stay per-vendor). Connect via host APIs, stream a turn, approve tools with Ask, resume via ",
   "header.taglineAfter": ".",
   "language.label": "Language",
   "agents.title": "Agents",
@@ -129,12 +130,14 @@ const en: Dictionary = {
     "Codex uses your local CLI auth: ChatGPT login via `codex`, or `CODEX_API_KEY` / `OPENAI_API_KEY`. ACP adapter: `codex-acp` or `npx -y @agentclientprotocol/codex-acp`.",
   "auth.claude":
     "Claude uses your local CLI auth: Claude Code login (Pro/Max), or `ANTHROPIC_API_KEY`. ACP adapter: `claude-agent-acp` or `npx -y @agentclientprotocol/claude-agent-acp`.",
+  "auth.copilot":
+    "Copilot uses your local CLI auth: GitHub login via `copilot`. ACP: `copilot --acp` (stdio; public preview). No separate npx adapter.",
 };
 
 const zhCN: Dictionary = {
   "badge.acpClient": "ACP 客户端",
   "header.taglineBefore":
-    "ACP 宿主：启动时恢复上次文件夹；在 Agents 列表切换 Grok / Codex / Claude（各家历史互不混用）。通过宿主 API 连接、流式一轮、Ask 审批工具，并用 ",
+    "ACP 宿主：启动时恢复上次文件夹；在 Agents 列表切换 Grok / Codex / Claude / Copilot（各家历史互不混用）。通过宿主 API 连接、流式一轮、Ask 审批工具，并用 ",
   "header.taglineAfter": " 恢复会话。",
   "language.label": "语言",
   "agents.title": "Agents",
@@ -191,6 +194,8 @@ const zhCN: Dictionary = {
     "Codex 使用本机 CLI 登录：经 `codex` 的 ChatGPT 登录，或 `CODEX_API_KEY` / `OPENAI_API_KEY`。ACP 适配：`codex-acp` 或 `npx -y @agentclientprotocol/codex-acp`。",
   "auth.claude":
     "Claude 使用本机 CLI 登录：Claude Code（Pro/Max），或 `ANTHROPIC_API_KEY`。ACP 适配：`claude-agent-acp` 或 `npx -y @agentclientprotocol/claude-agent-acp`。",
+  "auth.copilot":
+    "Copilot 使用本机 CLI 登录：经 `copilot` 的 GitHub 登录。ACP：`copilot --acp`（stdio；公开预览）。无需单独的 npx 适配包。",
 };
 
 export const messages: Record<Locale, Dictionary> = {
