@@ -59,9 +59,9 @@ Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2
 
 **Done on main:** [#17](https://github.com/Andy115951/acp-desktop/issues/17) M7 UI language (`en` / `zh-CN`) — header locale toggle, `tauri-plugin-store` key `ui.locale`, chrome strings in `App.tsx` + `PermissionCard.tsx` (merged [#18](https://github.com/Andy115951/acp-desktop/pull/18) as `718de50`).
 
-**This PR (M8):** [#19](https://github.com/Andy115951/acp-desktop/issues/19) Copilot via `copilot --acp` — detect `copilot` on PATH, Agents list selectable, per-vendor session prefs (`copilot.sessionByCwd`).
+**Done on main:** [#19](https://github.com/Andy115951/acp-desktop/issues/19) M8 Copilot via `copilot --acp` (merged [#20](https://github.com/Andy115951/acp-desktop/pull/20) as `7ca85e7`) — detect `copilot` on PATH, Agents list selectable, per-vendor session prefs (`copilot.sessionByCwd`).
 
-Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6 + #14 + #17 Done; [#19](https://github.com/Andy115951/acp-desktop/issues/19) M8).
+Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6 + #14 + #17 + #19 Done).
 
 ## Develop
 
@@ -162,7 +162,7 @@ Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & no
 5. **macOS packaging** — done (M5 / [#6](https://github.com/Andy115951/acp-desktop/issues/6)); see [docs/PACKAGING.md](docs/PACKAGING.md)
 6. **Claude backend** — done (M6 / [#14](https://github.com/Andy115951/acp-desktop/issues/14), [#15](https://github.com/Andy115951/acp-desktop/pull/15))
 7. **UI language** — done (M7 / [#17](https://github.com/Andy115951/acp-desktop/issues/17), [#18](https://github.com/Andy115951/acp-desktop/pull/18)): `en` / `zh-CN` chrome locale
-8. **Copilot backend** — this PR (M8 / [#19](https://github.com/Andy115951/acp-desktop/issues/19)): `copilot --acp`
+8. **Copilot backend** — done (M8 / [#19](https://github.com/Andy115951/acp-desktop/issues/19), [#20](https://github.com/Andy115951/acp-desktop/pull/20) as `7ca85e7`): `copilot --acp`
 
 ## Tech notes
 
