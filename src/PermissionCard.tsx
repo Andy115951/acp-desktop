@@ -1,21 +1,25 @@
 import type { RefObject } from "react";
 import { permissionFocusOptionIndex } from "./lib/permissionHotkey";
+import { t, type Locale } from "./lib/i18n";
 import type { PermissionRequest } from "./store/session";
 
 type Props = {
   permission: PermissionRequest;
   allowButtonRef: RefObject<HTMLButtonElement | null>;
   onRespond: (optionId: string | null) => void;
+  locale?: Locale;
 };
 
 /**
  * Inline Ask permission card rendered in the chat transcript (not a
  * full-viewport modal). Keep hotkeys/focus wired from App.
+ * Option names / title / detail come from the agent — not translated.
  */
 export function PermissionCard({
   permission,
   allowButtonRef,
   onRespond,
+  locale = "en",
 }: Props) {
   const focusIdx = permissionFocusOptionIndex(permission.options);
 
@@ -24,7 +28,7 @@ export function PermissionCard({
       data-testid="permission-card"
       className="rounded-lg border border-amber-700/70 bg-slate-900/95 p-3 shadow-lg shadow-black/20 space-y-2 ring-1 ring-amber-900/40"
       role="group"
-      aria-label="Permission request"
+      aria-label={t(locale, "permission.ariaLabel")}
     >
       <h3 className="text-sm font-semibold text-amber-50">
         {permission.title}
@@ -56,15 +60,11 @@ export function PermissionCard({
           onClick={() => onRespond(null)}
           className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-300"
         >
-          Cancel
+          {t(locale, "permission.cancel")}
         </button>
       </div>
       <p className="text-[10px] text-slate-500 pt-0.5">
-        Keys:{" "}
-        <kbd className="text-slate-400">a</kbd>/
-        <kbd className="text-slate-400">Enter</kbd> Allow ·{" "}
-        <kbd className="text-slate-400">r</kbd> Reject ·{" "}
-        <kbd className="text-slate-400">Esc</kbd> Cancel
+        {t(locale, "permission.hotkeys")}
       </p>
     </div>
   );

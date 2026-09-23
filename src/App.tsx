@@ -11,8 +11,10 @@ import {
 } from "./lib/sessionUiGates";
 import { agentAuthHint } from "./lib/agentHints";
 import { shouldDisconnectOnAgentSwitch } from "./lib/agentSwitch";
+import { t, type Locale } from "./lib/i18n";
 import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
+import { useUiStore } from "./store/ui";
 
 export default function App() {
   const {
@@ -47,6 +49,11 @@ export default function App() {
     clearTranscript,
     bindEvents,
   } = useSessionStore();
+  const { locale, hydrateLocale, setLocale } = useUiStore();
+
+  useEffect(() => {
+    void hydrateLocale();
+  }, [hydrateLocale]);
 
   // Detect agents (and selectedAgentId prefs) before restoring lastCwd /
   // Resume — parallel hydrate raced detect and could stamp the wrong vendor’s
@@ -135,31 +142,48 @@ export default function App() {
   const canConnectNew = canConnectNewSession(uiGates);
   const canSend = canSendPrompt(uiGates);
   const canCancel = canCancelPrompt(uiGates);
-  const authHint = agentAuthHint(selectedAgentId, usingFake);
+  const authHint = agentAuthHint(selectedAgentId, usingFake, locale);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-8">
       <header className="space-y-2">
-        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-          ACP client
-        </p>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">
-          acp-desktop
-        </h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+              {t(locale, "badge.acpClient")}
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
+              acp-desktop
+            </h1>
+          </div>
+          <label className="flex items-center gap-1.5 text-xs text-slate-400">
+            {t(locale, "language.label")}
+            <select
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as Locale)}
+              className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
+              aria-label={t(locale, "language.label")}
+            >
+              <option value="en">English</option>
+              <option value="zh-CN">简体中文</option>
+            </select>
+          </label>
+        </div>
         <p className="text-sm text-slate-400">
-          ACP host path: last folder restores on launch; switch Grok / Codex
-          in the Agents list (histories stay per-vendor). Connect via host
-          APIs, stream a turn, approve tools with Ask, resume via{" "}
-          <code className="text-slate-300">session/load</code>.
+          {t(locale, "header.taglineBefore")}
+          <code className="text-slate-300">session/load</code>
+          {t(locale, "header.taglineAfter")}
         </p>
       </header>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-slate-200">Agents</h2>
+          <h2 className="text-sm font-medium text-slate-200">
+            {t(locale, "agents.title")}
+          </h2>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs text-slate-400">
-              Switch
+              {t(locale, "agents.switch")}
               <select
                 value={selectedAgentId}
                 disabled={busy}
@@ -171,7 +195,7 @@ export default function App() {
                   .map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name}
-                      {a.available ? "" : " (missing)"}
+                      {a.available ? "" : t(locale, "agents.missingSuffix")}
                     </option>
                   ))}
               </select>
@@ -182,7 +206,9 @@ export default function App() {
               disabled={loading}
               className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:border-slate-500 disabled:opacity-50"
             >
-              {loading ? "Checking…" : "Refresh"}
+              {loading
+                ? t(locale, "agents.checking")
+                : t(locale, "agents.refresh")}
             </button>
           </div>
         </div>
@@ -197,7 +223,7 @@ export default function App() {
         <ul className="divide-y divide-slate-800">
           {agents.map((agent) => {
             const available = agent.available;
-            const selected = agent.id === selectedAgentId;
+            const selectedRow = agent.id === selectedAgentId;
             const clickable = agent.connectable;
             return (
               <li key={agent.id}>
@@ -208,7 +234,7 @@ export default function App() {
                   className={`flex w-full items-center justify-between gap-3 py-2.5 text-left ${
                     available ? "text-slate-100" : "text-slate-500"
                   } ${
-                    selected
+                    selectedRow
                       ? "rounded-md bg-slate-800/80 px-2 -mx-2"
                       : ""
                   } ${clickable ? "hover:bg-slate-800/40" : "cursor-default"}`}
@@ -224,11 +250,11 @@ export default function App() {
                         {agent.name}
                         {!agent.connectable ? (
                           <span className="ml-2 text-xs font-normal text-slate-600">
-                            later
+                            {t(locale, "agents.later")}
                           </span>
-                        ) : selected ? (
+                        ) : selectedRow ? (
                           <span className="ml-2 text-xs font-normal text-sky-400">
-                            selected
+                            {t(locale, "agents.selected")}
                           </span>
                         ) : null}
                       </span>
@@ -249,7 +275,9 @@ export default function App() {
                         : "bg-slate-950 text-slate-500 ring-1 ring-slate-800"
                     }`}
                   >
-                    {available ? "available" : "missing"}
+                    {available
+                      ? t(locale, "agents.available")
+                      : t(locale, "agents.missing")}
                   </span>
                 </button>
               </li>
@@ -262,12 +290,14 @@ export default function App() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-medium text-amber-100">
-              Dev: fake ACP agent
+              {t(locale, "dev.title")}
             </h2>
             <p className="text-xs text-amber-200/70">
-              Deterministic{" "}
-              <code className="text-amber-100/90">session/request_permission</code>{" "}
-              for permission-card E2E (process env only; not persisted).
+              {t(locale, "dev.blurbBefore")}
+              <code className="text-amber-100/90">
+                session/request_permission
+              </code>
+              {t(locale, "dev.blurbAfter")}
             </p>
           </div>
           <label className="flex items-center gap-2 text-xs text-amber-100">
@@ -280,16 +310,17 @@ export default function App() {
               }}
               className="rounded border-amber-700"
             />
-            Use fake agent
+            {t(locale, "dev.useFake")}
           </label>
         </div>
         <p className="text-xs text-amber-200/60 break-all">
-          mode: {override?.mode ?? "…"} · cmd:{" "}
+          {t(locale, "dev.mode")}: {override?.mode ?? "…"} ·{" "}
+          {t(locale, "dev.cmd")}:{" "}
           <code>{override?.command?.join(" ") ?? "—"}</code>
           {override?.fakeAgentPath
-            ? ` · binary ${override.fakeAgentPath}`
+            ? ` · ${t(locale, "dev.binary")} ${override.fakeAgentPath}`
             : usingFake
-              ? " · binary missing (cargo build -p fake-acp-agent)"
+              ? ` · ${t(locale, "dev.binaryMissing")}`
               : ""}
         </p>
       </section>
@@ -297,8 +328,10 @@ export default function App() {
       <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         <h2 className="text-sm font-medium text-slate-200">
           {usingFake
-            ? "Fake agent session"
-            : `${selected?.name ?? "Agent"} session`}
+            ? t(locale, "session.fakeTitle")
+            : t(locale, "session.agentTitle", {
+                name: selected?.name ?? "Agent",
+              })}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -306,7 +339,7 @@ export default function App() {
             onClick={() => void pickFolder()}
             className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
           >
-            Pick folder
+            {t(locale, "session.pickFolder")}
           </button>
           {!connected ? (
             <>
@@ -318,14 +351,16 @@ export default function App() {
                     disabled={!canResume}
                     title={
                       loadSessionSupported === false
-                        ? "Agent does not advertise loadSession"
+                        ? t(locale, "session.resumeTitleUnsupported")
                         : busy
-                          ? "Busy…"
-                          : `Resume session ${savedSessionId}`
+                          ? t(locale, "session.resumeTitleBusy")
+                          : t(locale, "session.resumeTitleId", {
+                              id: savedSessionId,
+                            })
                     }
                     className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                   >
-                    Resume
+                    {t(locale, "session.resume")}
                   </button>
                   <button
                     type="button"
@@ -333,7 +368,7 @@ export default function App() {
                     disabled={!canConnectNew}
                     className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                   >
-                    New session
+                    {t(locale, "session.newSession")}
                   </button>
                 </>
               ) : (
@@ -343,7 +378,7 @@ export default function App() {
                   disabled={!canConnectNew}
                   className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                 >
-                  Connect
+                  {t(locale, "session.connect")}
                 </button>
               )}
             </>
@@ -353,7 +388,7 @@ export default function App() {
               onClick={() => void disconnect()}
               className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200"
             >
-              Disconnect
+              {t(locale, "session.disconnect")}
             </button>
           )}
           <button
@@ -361,25 +396,31 @@ export default function App() {
             onClick={clearTranscript}
             className="rounded-md border border-slate-800 px-3 py-1.5 text-xs text-slate-400"
           >
-            Clear
+            {t(locale, "session.clear")}
           </button>
         </div>
         <p className="text-xs text-slate-500 break-all">
-          cwd: {cwd ?? "—"} {sessionId ? `· session ${sessionId}` : ""}{" "}
-          {savedSessionId && !sessionId
-            ? `· saved ${savedSessionId}`
+          {t(locale, "session.cwd")}: {cwd ?? "—"}{" "}
+          {sessionId
+            ? `· ${t(locale, "session.session")} ${sessionId}`
             : ""}{" "}
-          {connected ? "· connected" : "· idle"}
+          {savedSessionId && !sessionId
+            ? `· ${t(locale, "session.saved")} ${savedSessionId}`
+            : ""}{" "}
+          {connected
+            ? `· ${t(locale, "session.connected")}`
+            : `· ${t(locale, "session.idle")}`}
           {loadSessionSupported === false
-            ? " · loadSession unsupported"
+            ? ` · ${t(locale, "session.loadUnsupported")}`
             : loadSessionSupported === true
-              ? " · loadSession ok"
+              ? ` · ${t(locale, "session.loadOk")}`
               : ""}
         </p>
         {loadSessionSupported === false ? (
           <p className="rounded-md border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
-            Resume disabled: agent did not advertise{" "}
-            <code>loadSession</code>. Use New session.
+            {t(locale, "session.resumeDisabledBefore")}
+            <code>loadSession</code>
+            {t(locale, "session.resumeDisabledAfter")}
           </p>
         ) : null}
         {error ? (
@@ -390,7 +431,9 @@ export default function App() {
 
         <div className="h-64 overflow-y-auto rounded-lg border border-slate-800 bg-black/30 p-3 text-sm space-y-2">
           {lines.length === 0 && !permission ? (
-            <p className="text-slate-600">Transcript appears here…</p>
+            <p className="text-slate-600">
+              {t(locale, "session.transcriptEmpty")}
+            </p>
           ) : (
             lines.map((line) => (
               <div key={line.id} className="whitespace-pre-wrap">
@@ -419,6 +462,7 @@ export default function App() {
                 permission={permission}
                 allowButtonRef={allowButtonRef}
                 onRespond={(id) => void respondPermission(id)}
+                locale={locale}
               />
             </div>
           ) : null}
@@ -437,9 +481,11 @@ export default function App() {
             placeholder={
               connected
                 ? usingFake
-                  ? "Message fake agent…"
-                  : `Message ${selected?.name ?? "agent"}…`
-                : "Connect first"
+                  ? t(locale, "session.placeholderConnectedFake")
+                  : t(locale, "session.placeholderConnected", {
+                      name: selected?.name ?? "agent",
+                    })
+                : t(locale, "session.placeholderIdle")
             }
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 disabled:opacity-50"
           />
@@ -449,7 +495,7 @@ export default function App() {
             disabled={!canSend}
             className="rounded-md bg-sky-700 px-3 py-2 text-sm text-white disabled:opacity-40"
           >
-            Send
+            {t(locale, "session.send")}
           </button>
           <button
             type="button"
@@ -457,18 +503,17 @@ export default function App() {
             disabled={!canCancel}
             title={
               permission
-                ? "Cancel prompt and clear pending Ask"
+                ? t(locale, "session.cancelTitleAsk")
                 : busy
-                  ? "Cancel in-flight prompt"
+                  ? t(locale, "session.cancelTitleBusy")
                   : undefined
             }
             className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 disabled:opacity-40"
           >
-            Cancel
+            {t(locale, "session.cancel")}
           </button>
         </div>
       </section>
-
     </main>
   );
 }

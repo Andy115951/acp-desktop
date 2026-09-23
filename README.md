@@ -55,9 +55,11 @@ Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2
 
 **Done on main:** [#6](https://github.com/Andy115951/acp-desktop/issues/6) M5 macOS packaging (`tauri build` → `.app` / `.dmg`; no vendor CLIs in the bundle). See [docs/PACKAGING.md](docs/PACKAGING.md).
 
-**This PR (M6):** Claude Code via `@agentclientprotocol/claude-agent-acp` — detect `claude-agent-acp` **or** `claude`, spawn `claude-agent-acp` or `npx -y`, Agents list selectable (no more “later”), per-vendor session prefs, enriched Connect errors.
+**Done on main:** [#14](https://github.com/Andy115951/acp-desktop/issues/14) M6 Claude via `@agentclientprotocol/claude-agent-acp` (merged [#15](https://github.com/Andy115951/acp-desktop/pull/15) as `ae0df18`) — detect `claude-agent-acp` **or** `claude`, spawn binary or `npx -y`, Agents list selectable, per-vendor session prefs.
 
-Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
+**This PR (M7):** UI language (`en` / `zh-CN`) — header locale toggle, `tauri-plugin-store` key `ui.locale`, chrome strings in `App.tsx` + `PermissionCard.tsx` (no agent transcript / protocol translation).
+
+Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6 Done; [#17](https://github.com/Andy115951/acp-desktop/issues/17) M7).
 
 ## Develop
 
@@ -143,7 +145,8 @@ Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & no
 3. **AgentBackend** — done (M3 / [#4](https://github.com/Andy115951/acp-desktop/issues/4), [#11](https://github.com/Andy115951/acp-desktop/pull/11))
 4. **Multi-agent switch** — done (M4 / [#5](https://github.com/Andy115951/acp-desktop/issues/5), [#12](https://github.com/Andy115951/acp-desktop/pull/12))
 5. **macOS packaging** — done (M5 / [#6](https://github.com/Andy115951/acp-desktop/issues/6)); see [docs/PACKAGING.md](docs/PACKAGING.md)
-6. **Claude backend** — this PR (M6): `@agentclientprotocol/claude-agent-acp`
+6. **Claude backend** — done (M6 / [#14](https://github.com/Andy115951/acp-desktop/issues/14), [#15](https://github.com/Andy115951/acp-desktop/pull/15))
+7. **UI language** — this PR (M7 / [#17](https://github.com/Andy115951/acp-desktop/issues/17)): `en` / `zh-CN` chrome locale
 
 ## Tech notes
 
@@ -152,13 +155,14 @@ Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & no
 - ACP client: official Rust crate [`agent-client-protocol`](https://crates.io/crates/agent-client-protocol)
 - Layout: single repo (`src/` frontend + `src-tauri/` backend)
 - Agents: built-in table + user-defined command/args (no ACP Registry in v1)
-- Preferences: `tauri-plugin-store` (last folder / selected agent); no local session DB
+- Preferences: `tauri-plugin-store` (last folder / selected agent / `ui.locale`); no local session DB
 - First agent: **Grok Build** via `grok agent stdio`
 
 ### Still open
 
-- M4 Mac UI E2E: real Codex Connect / Ask / Resume (PR #12; Linux `tauri:fake` covers Switch hydrate + fake override)
-- Mac UI E2E: real Claude Connect / Ask / Resume (manual; needs local Claude login)
+- Mac UI E2E for real Codex / Claude Connect / Ask / Resume — **waived** as a merge/dev blocker (headless `smoke:codex-acp` / `smoke:claude-acp` + fake-agent CI remain)
+- Packaging notarization / auto-update (needs Apple Developer ID; see [docs/PACKAGING.md](docs/PACKAGING.md))
+- UI language (`en` / `zh-CN`) — tracked by [#17](https://github.com/Andy115951/acp-desktop/issues/17) (this PR)
 
 ## Non-goals
 
