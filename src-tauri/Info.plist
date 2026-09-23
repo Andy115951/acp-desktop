@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>ACP Desktop</string>
+  <key>CFBundleGetInfoString</key>
+  <string>Unofficial desktop ACP client. Does not ship vendor CLIs.</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 Andy115951. Not affiliated with xAI, OpenAI, or Anthropic.</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.developer-tools</string>
+</dict>
+</plist>

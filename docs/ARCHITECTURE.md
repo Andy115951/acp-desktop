@@ -86,5 +86,5 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 
 - Third agent: Claude Code (`@agentclientprotocol/claude-agent-acp`)
 - Permission card placement: modal vs inline
-- Packaging / notarization / auto-update
+- Packaging / notarization / auto-update — M5 first slice: macOS `app`+`dmg` bundle metadata, entitlements + Info.plist placeholders, empty `resources`/`externalBin` (no vendor CLIs). See [PACKAGING.md](PACKAGING.md). Notarization / auto-update still deferred.
 - UI language (start simple; not a protocol blocker)

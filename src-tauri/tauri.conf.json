@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "acp-desktop",
+  "productName": "ACP Desktop",
   "version": "0.1.0",
   "identifier": "com.andy115951.acp-desktop",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "acp-desktop",
+        "title": "ACP Desktop",
         "width": 720,
         "height": 520
       }
@@ -23,13 +23,45 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "publisher": "Andy115951",
+    "homepage": "https://github.com/Andy115951/acp-desktop",
+    "copyright": "Copyright \u00a9 2026 Andy115951. Unofficial ACP client \u2014 not affiliated with xAI, OpenAI, or Anthropic.",
+    "license": "MIT",
+    "category": "DeveloperTool",
+    "shortDescription": "Unofficial desktop ACP client for local coding-agent CLIs.",
+    "longDescription": "Unofficial desktop ACP client: detect local coding-agent CLIs on PATH (Grok Build, Codex via codex-acp, Claude later), switch agents without mixing histories, stream chat, and Ask-permission cards. Does not bundle or ship vendor CLIs, installers, or credentials \u2014 install and log in to each CLI yourself.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": [],
+    "externalBin": [],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true,
+      "entitlements": "Entitlements.plist",
+      "infoPlist": "Info.plist",
+      "dmg": {
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        },
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        }
+      }
+    }
   }
 }
