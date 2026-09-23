@@ -33,7 +33,7 @@
     "license": "MIT",
     "category": "DeveloperTool",
     "shortDescription": "Unofficial desktop ACP client for local coding-agent CLIs.",
-    "longDescription": "Unofficial desktop ACP client: detect local coding-agent CLIs on PATH (Grok Build, Codex via codex-acp, Claude later), switch agents without mixing histories, stream chat, and Ask-permission cards. Does not bundle or ship vendor CLIs, installers, or credentials \u2014 install and log in to each CLI yourself.",
+    "longDescription": "Unofficial desktop ACP client: detect local coding-agent CLIs on PATH (Grok Build, Codex via codex-acp, Claude via claude-agent-acp), switch agents without mixing histories, stream chat, and Ask-permission cards. Does not bundle or ship vendor CLIs, installers, or credentials \u2014 install and log in to each CLI yourself.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

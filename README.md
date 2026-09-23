@@ -34,7 +34,7 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
                                  |
                                  |  agent-client-protocol (ACP v1)
                                  v
-                           grok agent stdio | codex-acp (Claude later)
+                           grok agent stdio | codex-acp | claude-agent-acp
 ```
 
 - UI never talks to the CLI directly; the Rust host owns spawn, handshake, streaming, and permission replies.
@@ -51,9 +51,11 @@ Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2
 
 **Done on main:** [#4](https://github.com/Andy115951/acp-desktop/issues/4) M3 `AgentBackend` (`GrokBackend` + `connect_agent`).
 
-**Done on main:** [#5](https://github.com/Andy115951/acp-desktop/issues/5) M4 — Codex via `@agentclientprotocol/codex-acp`, Agents list + Switch dropdown, per-vendor session prefs (`{agentId}.sessionByCwd`) (merged [#12](https://github.com/Andy115951/acp-desktop/pull/12); Mac UI E2E waived). Claude remains listed-not-wired.
+**Done on main:** [#5](https://github.com/Andy115951/acp-desktop/issues/5) M4 — Codex via `@agentclientprotocol/codex-acp`, Agents list + Switch dropdown, per-vendor session prefs (`{agentId}.sessionByCwd`) (merged [#12](https://github.com/Andy115951/acp-desktop/pull/12); Mac UI E2E waived).
 
-**In progress:** [#6](https://github.com/Andy115951/acp-desktop/issues/6) M5 macOS packaging (`tauri build` → `.app` / `.dmg`; no vendor CLIs in the bundle). See [docs/PACKAGING.md](docs/PACKAGING.md).
+**Done on main:** [#6](https://github.com/Andy115951/acp-desktop/issues/6) M5 macOS packaging (`tauri build` → `.app` / `.dmg`; no vendor CLIs in the bundle). See [docs/PACKAGING.md](docs/PACKAGING.md).
+
+**This PR (M6):** Claude Code via `@agentclientprotocol/claude-agent-acp` — detect `claude-agent-acp` **or** `claude`, spawn `claude-agent-acp` or `npx -y`, Agents list selectable (no more “later”), per-vendor session prefs, enriched Connect errors.
 
 Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6).
 
@@ -77,6 +79,20 @@ Asserts `protocolVersion: 1`, `loadSession`, `authMethods` (`api-key`, `chat-gpt
 ```bash
 npm run smoke:codex-acp
 # optional: CODEX_ACP_SMOKE_SKIP_PROMPT=1 npm run smoke:codex-acp
+```
+
+
+### Claude ACP headless Connect/Ask/Resume (Mac)
+
+Spawns the same argv as `ClaudeBackend` (`claude-agent-acp` if on `PATH`, else `npx -y @agentclientprotocol/claude-agent-acp`), then over stdio NDJSON runs:
+
+`initialize` → `session/new` → `session/prompt` → fresh-process `session/load`
+
+Needs a local Claude Code login (Pro/Max) or `ANTHROPIC_API_KEY`. Does **not** replace Mac UI Connect/Ask/Resume clicks.
+
+```bash
+npm run smoke:claude-acp
+# optional: CLAUDE_ACP_SMOKE_SKIP_PROMPT=1 npm run smoke:claude-acp
 ```
 
 ### Fake ACP agent (permission smoke)
@@ -126,7 +142,8 @@ Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & no
 2. **Grok ACP path** — done (M2 / [#3](https://github.com/Andy115951/acp-desktop/issues/3), [#8](https://github.com/Andy115951/acp-desktop/pull/8) + [#9](https://github.com/Andy115951/acp-desktop/pull/9))
 3. **AgentBackend** — done (M3 / [#4](https://github.com/Andy115951/acp-desktop/issues/4), [#11](https://github.com/Andy115951/acp-desktop/pull/11))
 4. **Multi-agent switch** — done (M4 / [#5](https://github.com/Andy115951/acp-desktop/issues/5), [#12](https://github.com/Andy115951/acp-desktop/pull/12))
-5. **macOS packaging** — in progress (M5 / [#6](https://github.com/Andy115951/acp-desktop/issues/6)); see [docs/PACKAGING.md](docs/PACKAGING.md)
+5. **macOS packaging** — done (M5 / [#6](https://github.com/Andy115951/acp-desktop/issues/6)); see [docs/PACKAGING.md](docs/PACKAGING.md)
+6. **Claude backend** — this PR (M6): `@agentclientprotocol/claude-agent-acp`
 
 ## Tech notes
 
@@ -141,7 +158,7 @@ Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & no
 ### Still open
 
 - M4 Mac UI E2E: real Codex Connect / Ask / Resume (PR #12; Linux `tauri:fake` covers Switch hydrate + fake override)
-- Third agent: Claude Code (`claude-agent-acp`) — listed, not wired
+- Mac UI E2E: real Claude Connect / Ask / Resume (manual; needs local Claude login)
 - Permission card: modal vs inline in the chat thread
 
 ## Non-goals

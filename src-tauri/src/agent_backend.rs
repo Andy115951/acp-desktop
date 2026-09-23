@@ -4,6 +4,7 @@
 //! Vendor spawn details live behind [`AgentBackend`]:
 //! - [`GrokBackend`] — `grok agent stdio`
 //! - [`CodexBackend`] — `codex-acp` / `npx -y @agentclientprotocol/codex-acp` (M4)
+//! - [`ClaudeBackend`] — `claude-agent-acp` / `npx -y @agentclientprotocol/claude-agent-acp` (M6)
 
 use serde::Serialize;
 use std::env;
@@ -123,8 +124,82 @@ pub fn codex_availability_detail(has_codex_acp: bool, has_codex: bool) -> Option
 
 static CODEX_BACKEND: CodexBackend = CodexBackend;
 
+/// Claude Code via official ACP adapter (`@agentclientprotocol/claude-agent-acp`).
+///
+/// Prefer a global `claude-agent-acp` binary; otherwise spawn through `npx -y`.
+/// Availability: `claude-agent-acp` **or** local `claude` CLI (user already
+/// uses Claude Code on this machine; Connect still needs the ACP adapter).
+pub struct ClaudeBackend;
+
+impl AgentBackend for ClaudeBackend {
+    fn id(&self) -> &'static str {
+        "claude"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Claude Code"
+    }
+
+    fn binary(&self) -> &'static str {
+        // Shown in the Agents list; primary probe target is `claude-agent-acp`.
+        "claude-agent-acp"
+    }
+
+    fn detect(&self) -> bool {
+        claude_is_detectable(
+            binary_named_on_path("claude-agent-acp"),
+            binary_named_on_path("claude"),
+        )
+    }
+
+    fn default_argv(&self) -> Vec<String> {
+        claude_spawn_argv(binary_named_on_path("claude-agent-acp"))
+    }
+}
+
+/// Pure detect rule: `claude-agent-acp` **or** local `claude` CLI.
+pub fn claude_is_detectable(has_claude_agent_acp: bool, has_claude: bool) -> bool {
+    has_claude_agent_acp || has_claude
+}
+
+/// Pure spawn argv: prefer global `claude-agent-acp`, else `npx -y` published adapter.
+///
+/// Common Mac state: `claude` on PATH but no `claude-agent-acp` → Connect uses npx
+/// (first run may download). Callers pass the `claude-agent-acp` probe result only;
+/// detect may still be true via `claude` alone.
+pub fn claude_spawn_argv(has_claude_agent_acp: bool) -> Vec<String> {
+    if has_claude_agent_acp {
+        vec!["claude-agent-acp".into()]
+    } else {
+        vec![
+            "npx".into(),
+            "-y".into(),
+            "@agentclientprotocol/claude-agent-acp".into(),
+        ]
+    }
+}
+
+/// Agents-list detail when Claude is available only via `claude` (npx spawn).
+pub fn claude_availability_detail(
+    has_claude_agent_acp: bool,
+    has_claude: bool,
+) -> Option<String> {
+    if has_claude_agent_acp {
+        None
+    } else if has_claude {
+        Some(
+            "claude on PATH; Connect spawns via npx (@agentclientprotocol/claude-agent-acp). Install `claude-agent-acp` globally to skip the download."
+                .into(),
+        )
+    } else {
+        None
+    }
+}
+
+static CLAUDE_BACKEND: ClaudeBackend = ClaudeBackend;
+
 /// Built-in catalog entry (detect list). Only `backend`-bearing rows are
-/// connectable; Claude remains an M4+/later placeholder.
+/// connectable.
 #[derive(Clone, Copy)]
 pub struct BuiltinAgent {
     pub id: &'static str,
@@ -151,8 +226,8 @@ static BUILTIN_AGENTS: &[BuiltinAgent] = &[
     BuiltinAgent {
         id: "claude",
         name: "Claude Code",
-        binary: "claude",
-        backend: None,
+        binary: "claude-agent-acp",
+        backend: Some(&CLAUDE_BACKEND),
     },
 ];
 
@@ -170,7 +245,7 @@ pub fn lookup_backend(agent_id: &str) -> Result<&'static dyn AgentBackend, Strin
         if entry.id == id {
             return entry.backend.ok_or_else(|| {
                 format!(
-                    "agent `{id}` is listed but not wired yet. Use `grok`/`codex` or enable the fake/custom override."
+                    "agent `{id}` is listed but not wired yet. Use `grok`/`codex`/`claude` or enable the fake/custom override."
                 )
             });
         }
@@ -201,13 +276,16 @@ pub fn detect_builtin_agents() -> Vec<AgentInfo> {
             } else {
                 (binary_named_on_path(entry.binary), entry.name)
             };
-            let detail = if entry.id == "codex" {
-                codex_availability_detail(
+            let detail = match entry.id {
+                "codex" => codex_availability_detail(
                     binary_named_on_path("codex-acp"),
                     binary_named_on_path("codex"),
-                )
-            } else {
-                None
+                ),
+                "claude" => claude_availability_detail(
+                    binary_named_on_path("claude-agent-acp"),
+                    binary_named_on_path("claude"),
+                ),
+                _ => None,
             };
             AgentInfo {
                 id: entry.id.to_string(),
@@ -387,6 +465,15 @@ pub fn missing_agent_message(backend: &dyn AgentBackend) -> String {
             "`CODEX_API_KEY` / `OPENAI_API_KEY`."
         )
         .into(),
+        "claude" => concat!(
+            "Claude ACP not found on PATH. Install `claude` and/or `claude-agent-acp` ",
+            "(`npm i -g @agentclientprotocol/claude-agent-acp`), or ensure `npx`/`node` ",
+            "is available so Connect can fall back to ",
+            "`npx -y @agentclientprotocol/claude-agent-acp`. ",
+            "Auth stays with the local CLI: Claude Code login (Pro/Max) or ",
+            "`ANTHROPIC_API_KEY`."
+        )
+        .into(),
         "grok" => format!(
             "`{}` not found on PATH. Install Grok Build CLI, or set ACP_DESKTOP_FAKE_AGENT=1 / ACP_DESKTOP_AGENT_CMD.",
             backend.binary()
@@ -410,6 +497,8 @@ fn looks_like_auth_failure(raw: &str) -> bool {
         "apikey",
         "codex_api_key",
         "openai_api_key",
+        "anthropic_api_key",
+        "anthropic",
         "not signed",
         "sign in",
         "401",
@@ -470,6 +559,9 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
     if raw.contains("Codex auth:")
         || raw.contains("Codex ACP:")
         || raw.contains("Codex usage:")
+        || raw.contains("Claude auth:")
+        || raw.contains("Claude ACP:")
+        || raw.contains("Claude usage:")
     {
         return raw.to_string();
     }
@@ -494,6 +586,19 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
         "codex" => format!(
             "{raw}\n\nIf this looks like missing install or auth: install `codex`/`codex-acp`,              complete ChatGPT login in the Codex CLI (or set `CODEX_API_KEY` / `OPENAI_API_KEY`),              then retry Connect."
         ),
+        "claude" if looks_like_usage_limit(raw) => format!(
+            "{raw}\n\nClaude usage: plan or rate limit hit — wait and retry, or check              Claude / Anthropic usage. This is not a missing `claude-agent-acp` install or login."
+        ),
+        "claude" if looks_like_auth_failure(raw) => format!(
+            "{raw}\n\nClaude auth: sign in via the local `claude` CLI (Pro/Max),              or set `ANTHROPIC_API_KEY` in the environment, then retry Connect."
+        ),
+        "claude" if looks_like_spawn_failure(raw) => format!(
+            "{raw}\n\nClaude ACP: install `claude-agent-acp` (`npm i -g @agentclientprotocol/claude-agent-acp`)              or ensure `npx`/`node` is on PATH. Detect also accepts a local `claude` binary."
+        ),
+        "claude" if raw.to_ascii_lowercase().contains("prompt failed") => raw.to_string(),
+        "claude" => format!(
+            "{raw}\n\nIf this looks like missing install or auth: install `claude`/`claude-agent-acp`,              complete Claude Code login (or set `ANTHROPIC_API_KEY`),              then retry Connect."
+        ),
         _ => raw.to_string(),
     }
 }
@@ -509,7 +614,7 @@ mod tests {
     use super::TEST_ENV_LOCK as ENV_LOCK;
 
     #[test]
-    fn builtin_table_lists_grok_and_codex_connectable() {
+    fn builtin_table_lists_grok_codex_claude_connectable() {
         let agents = detect_builtin_agents();
         let grok = agents.iter().find(|a| a.id == "grok").expect("grok");
         assert!(grok.connectable);
@@ -518,7 +623,8 @@ mod tests {
         assert!(codex.connectable);
         assert_eq!(codex.binary, "codex-acp");
         let claude = agents.iter().find(|a| a.id == "claude").expect("claude");
-        assert!(!claude.connectable);
+        assert!(claude.connectable);
+        assert_eq!(claude.binary, "claude-agent-acp");
     }
 
     #[test]
@@ -547,14 +653,21 @@ mod tests {
     }
 
     #[test]
-    fn lookup_backend_rejects_claude_placeholder() {
-        match lookup_backend("claude") {
-            Ok(_) => panic!("claude should not be connectable yet"),
-            Err(err) => assert!(
-                err.contains("not wired") || err.contains("M4"),
-                "{err}"
-            ),
-        }
+    fn lookup_backend_claude_ok() {
+        let b = lookup_backend("claude").unwrap();
+        assert_eq!(b.id(), "claude");
+        assert_eq!(b.binary(), "claude-agent-acp");
+        let argv = b.default_argv();
+        assert!(
+            argv == vec!["claude-agent-acp".to_string()]
+                || argv
+                    == vec![
+                        "npx".to_string(),
+                        "-y".to_string(),
+                        "@agentclientprotocol/claude-agent-acp".to_string()
+                    ],
+            "unexpected claude argv: {argv:?}"
+        );
     }
 
     #[test]
@@ -719,5 +832,120 @@ mod tests {
         assert!(using_override_agent());
         env::remove_var("ACP_DESKTOP_FAKE_AGENT");
     }
+
+    #[test]
+    fn missing_agent_message_claude_mentions_auth() {
+        let msg = missing_agent_message(&CLAUDE_BACKEND);
+        assert!(msg.contains("Claude"), "{msg}");
+        assert!(
+            msg.contains("ANTHROPIC_API_KEY") || msg.contains("Pro/Max"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("claude-agent-acp") || msg.contains("npx"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn enrich_connect_error_claude_auth() {
+        let out = enrich_connect_error("claude", "initialize failed: unauthorized");
+        assert!(out.starts_with("initialize failed"), "{out}");
+        assert!(out.contains("Claude auth:"), "{out}");
+        assert!(out.contains("ANTHROPIC_API_KEY"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_claude_spawn() {
+        let out = enrich_connect_error(
+            "claude",
+            "Failed to configure agent: No such file or directory",
+        );
+        assert!(out.contains("Claude ACP:"), "{out}");
+        assert!(out.contains("npx"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_claude_usage_limit_not_auth() {
+        let raw = "prompt failed: usageLimitExceeded";
+        let out = enrich_connect_error("claude", raw);
+        assert!(out.starts_with("prompt failed"), "{out}");
+        assert!(out.contains("Claude usage:"), "{out}");
+        assert!(!out.contains("Claude auth:"), "{out}");
+        assert!(!out.contains("Claude ACP:"), "{out}");
+    }
+
+    #[test]
+    fn enrich_connect_error_preserves_session_load_for_claude() {
+        let raw = "session/load failed: unknown id. You can start a New session.";
+        let out = enrich_connect_error("claude", raw);
+        assert_eq!(out, raw);
+    }
+
+    #[test]
+    fn claude_spawn_argv_prefers_binary_when_present() {
+        assert_eq!(
+            claude_spawn_argv(true),
+            vec!["claude-agent-acp".to_string()]
+        );
+    }
+
+    #[test]
+    fn claude_spawn_argv_falls_back_to_npx() {
+        assert_eq!(
+            claude_spawn_argv(false),
+            vec![
+                "npx".to_string(),
+                "-y".to_string(),
+                "@agentclientprotocol/claude-agent-acp".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn claude_is_detectable_via_claude_alone() {
+        assert!(claude_is_detectable(false, true));
+        assert!(claude_is_detectable(true, false));
+        assert!(claude_is_detectable(true, true));
+        assert!(!claude_is_detectable(false, false));
+    }
+
+    #[test]
+    fn claude_availability_detail_npx_when_only_claude() {
+        let d = claude_availability_detail(false, true).expect("detail");
+        assert!(d.contains("npx"), "{d}");
+        assert!(d.contains("claude-agent-acp"), "{d}");
+        assert!(claude_availability_detail(true, true).is_none());
+        assert!(claude_availability_detail(true, false).is_none());
+        assert!(claude_availability_detail(false, false).is_none());
+    }
+
+    #[test]
+    fn resolve_claude_uses_spawn_helper_without_override() {
+        let _g = ENV_LOCK.lock().unwrap();
+        env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+        let argv = resolve_agent_command(&CLAUDE_BACKEND).unwrap();
+        assert!(
+            argv == claude_spawn_argv(true) || argv == claude_spawn_argv(false),
+            "unexpected claude resolve argv: {argv:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_claude_respects_fake_override() {
+        // Switch→Claude with tauri:fake must still spawn fake-acp-agent, not npx.
+        let _g = ENV_LOCK.lock().unwrap();
+        env::remove_var("ACP_DESKTOP_AGENT_CMD");
+        env::set_var("ACP_DESKTOP_FAKE_AGENT", "1");
+        let argv = resolve_agent_command(&CLAUDE_BACKEND).expect("fake resolves for Claude");
+        assert!(
+            argv[0].ends_with("fake-acp-agent") || argv[0].ends_with("fake-acp-agent.exe"),
+            "unexpected fake argv for Claude: {argv:?}"
+        );
+        assert!(using_override_agent());
+        env::remove_var("ACP_DESKTOP_FAKE_AGENT");
+    }
+
 
 }
