@@ -57,7 +57,7 @@ describe("conversation presentation", () => {
     const markup = renderToStaticMarkup(createElement(ChatTranscript, { lines, locale: "zh-CN", resetKey: "a" }));
     expect(markup.match(/<article/g)).toHaveLength(1);
     expect(markup).toContain("助手");
-    expect(markup).toContain("&lt;script&gt;");
+    expect(markup).not.toContain("alert(1)");
     expect(markup).not.toContain("<script>");
   });
 

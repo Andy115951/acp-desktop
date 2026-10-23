@@ -1,6 +1,9 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { isNearTranscriptBottom, type StreamLine } from "./lib/transcript";
 import { t, type Locale, type MessageKey } from "./lib/i18n";
+import { MarkdownMessage } from "./MarkdownMessage";
+import { CopyButton } from "./CopyButton";
+import { ToolCard } from "./ToolCard";
 
 function lineLabel(kind: string): MessageKey {
   if (kind === "user" || kind === "user_message") return "chat.you";
@@ -67,6 +70,7 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
           const isUser = line.kind === "user" || line.kind === "user_message";
           const isNote = line.kind === "status" || line.kind === "stop";
           const content = lineText(line, locale);
+          if (line.tool) return <ToolCard key={line.id} tool={line.tool} locale={locale} />;
           if (line.kind === "agent_thought") {
             return (
               <details key={line.id} className="rounded-lg border border-violet-900/40 px-3 py-2 text-sm text-violet-200/80">
@@ -82,7 +86,9 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
               "mr-4 rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-slate-100"
             }>
               {!isNote && <p className="mb-2 text-xs font-medium text-slate-400">{t(locale, lineLabel(line.kind))}</p>}
-              <div className="whitespace-pre-wrap break-words text-sm leading-6">{content}</div>
+              {line.kind === "agent_message" ? <MarkdownMessage text={content} locale={locale} /> :
+                <div className="whitespace-pre-wrap break-words text-sm leading-6">{content}</div>}
+              {!isNote && <div className="mt-2 flex justify-end"><CopyButton text={line.text} locale={locale} /></div>}
             </article>
           );
         })}

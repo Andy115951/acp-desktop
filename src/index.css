@@ -23,3 +23,21 @@ body {
 #root {
   min-height: 100vh;
 }
+
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown table { margin: .65rem 0; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4 { margin: 1rem 0 .5rem; font-weight: 600; line-height: 1.4; }
+.markdown h1 { font-size: 1.3rem; }
+.markdown h2 { font-size: 1.15rem; }
+.markdown h3, .markdown h4 { font-size: 1rem; }
+.markdown ul { list-style: disc; padding-left: 1.5rem; }
+.markdown ol { list-style: decimal; padding-left: 1.5rem; }
+.markdown li + li { margin-top: .2rem; }
+.markdown blockquote { border-left: 3px solid #475569; padding-left: 1rem; color: #94a3b8; }
+.markdown a { color: #7dd3fc; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.markdown :not(pre) > code { border-radius: .25rem; background: #020617; padding: .15rem .3rem; font-size: .85em; }
+.markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.markdown th, .markdown td { border: 1px solid #334155; padding: .4rem .7rem; text-align: left; }
+.markdown th { background: #0f172a; }
+.markdown hr { border-color: #334155; margin: 1rem 0; }

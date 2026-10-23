@@ -21,6 +21,13 @@ describe("error guidance", () => {
     ["No saved session for this folder.", "error.noSavedSession"],
     ["Agent does not advertise loadSession", "error.resumeUnsupported"],
     ["Unexpected vendor diagnostic", "error.general"],
+    ["initialize failed: unauthorized\n\nClaude auth: login", "error.auth"],
+    ["initialize failed: invalid response\n\nIf this looks like missing install or auth: login via npx", "error.handshake"],
+    ["session/new failed: workspace unavailable", "error.session"],
+    ["failed to spawn: ENOENT\n\nIf this looks like auth: login", "error.startup"],
+    ["request timed out", "error.timeout"],
+    ["fetch failed: ECONNREFUSED", "error.network"],
+    ["respond_permission failed: request rejected", "error.permission"],
   ])("classifies %s", (message, key) => {
     expect(errorHintKey(message)).toBe(key);
   });
