@@ -20,8 +20,8 @@ import { sessionPatchAfterClear } from "../lib/sessionUiGates";
 import { appendStreamLine, sealTranscript, recordToolDecision, type StreamLine, type ToolData } from "../lib/transcript";
 
 import { sessionPatchAfterAgentSwitch } from "../lib/agentSwitch";
-import { invalidateSession, rememberSession, sessionsForWorkspace, validSessionTitle, type SessionCatalog } from "../lib/sessionCatalog";
-import { editKnownSession, loadSessionCatalog, loadWorkspaceHistory, markSessionUnavailable, saveKnownSession, saveWorkspaceVisit } from "./sessionRepository";
+import { invalidateSession, mergeDiscoveredSessions, rememberSession, sessionsForWorkspace, validSessionTitle, type DiscoveredSession, type SessionCatalog } from "../lib/sessionCatalog";
+import { editKnownSession, importKnownSessions, loadSessionCatalog, loadWorkspaceHistory, markSessionUnavailable, saveKnownSession, saveWorkspaceVisit } from "./sessionRepository";
 
 import { visitWorkspace, type RecentWorkspace } from "../lib/workspaceHistory";
 
@@ -74,6 +74,8 @@ type SessionState = {
   cwd: string | null;
   catalog: SessionCatalog;
   catalogError: boolean;
+  sessionListSupported: boolean | null;
+  sessionListIncomplete: boolean;
   recentWorkspaces: RecentWorkspace[];
   workspaceError: boolean;
   selectWorkspace: (cwd: string) => Promise<void>;
@@ -150,6 +152,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   cwd: null,
   catalog: emptyCatalog(),
   catalogError: false,
+  sessionListSupported: null,
+  sessionListIncomplete: false,
   recentWorkspaces: [],
   workspaceError: false,
   renameSavedSession: (title) => editSavedEntry({ type: "rename", title }),
@@ -171,7 +175,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         workspaceError = true;
       }
       if (generation !== contextGeneration || currentAgentId() !== agentId) return;
-      set({ ...context, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null,
+      set({ ...context, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null, sessionListSupported: null, sessionListIncomplete: false,
         loadSessionSupported: null, lines: [], permission: null, draft: "" });
     } finally {
       if (generation === contextGeneration) set({ switching: false });
@@ -236,7 +240,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!get().cwd) { await get().hydrateFromPrefs(); return; }
     const generation = ++contextGeneration;
     const cwd = get().cwd;
-    set({ ...sessionPatchAfterAgentSwitch(null), catalog: emptyCatalog(), switching: true, draft: "" });
+    set({ ...sessionPatchAfterAgentSwitch(null), catalog: emptyCatalog(), switching: true, draft: "", sessionListSupported: null, sessionListIncomplete: false });
     const context = await loadCatalogContext(agentId, cwd);
     if (generation !== contextGeneration || currentAgentId() !== agentId || get().cwd !== cwd) return;
     set({ ...context, switching: false });
@@ -268,6 +272,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       error: null,
       busy: true,
+      sessionListSupported: null,
+      sessionListIncomplete: false,
       // Clear prior transcript on New or Resume so old turns never mix with
       // a fresh session/new or session/load. Status marker distinguishes an
       // empty connect from "events never arrived".
@@ -464,6 +470,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     );
     unsubs.push(
       await listen<{
+        agentId: string; cwd: string; supported: boolean; incomplete: boolean; sessions: DiscoveredSession[];
+      }>("acp://sessions", (ev) => {
+        const { agentId, cwd, supported, incomplete, sessions } = ev.payload;
+        if (agentId !== currentAgentId() || agentId !== connectionAgentId || cwd !== get().cwd || (!get().connected && !get().busy)) return;
+        const generation = connectionGeneration;
+        const revision = ++catalogRevision;
+        set({ sessionListSupported: supported, sessionListIncomplete: incomplete,
+          catalog: mergeDiscoveredSessions(get().catalog, cwd, sessions) });
+        if (!sessions.length) return;
+        void importKnownSessions(agentId, cwd, sessions).then((catalog) => {
+          if (generation === connectionGeneration && revision === catalogRevision && agentId === currentAgentId() && cwd === get().cwd) set({ catalog });
+        }).catch(() => {
+          if (generation === connectionGeneration && agentId === currentAgentId() && cwd === get().cwd) set({ sessionListIncomplete: true, catalogError: true });
+        });
+      }),
+    );
+    unsubs.push(
+      await listen<{
         connected: boolean;
         cwd?: string | null;
         sessionId?: string | null;
@@ -499,7 +523,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
               set({ catalog, catalogError: false });
             }
           }).catch(() => {
-            if (generation === connectionGeneration && revision === catalogRevision && currentAgentId() === agentId) set({ catalogError: true });
+            if (generation === connectionGeneration && revision === catalogRevision && currentAgentId() === agentId && get().cwd === cwd) set({ catalogError: true });
           });
         }
 

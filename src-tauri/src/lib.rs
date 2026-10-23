@@ -1,5 +1,6 @@
 mod agent_backend;
 mod acp_host;
+mod session_discovery;
 
 use acp_host::{AcpSession, AppState, SessionStatus};
 use agent_backend::{

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const prefs = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), save: vi.fn() }));
 vi.mock("@tauri-apps/plugin-store", () => ({ Store: { load: vi.fn(async () => prefs) } }));
-import { editKnownSession, loadSessionCatalog, loadWorkspaceHistory, markSessionUnavailable, saveKnownSession, saveWorkspaceVisit } from "./sessionRepository";
+import { editKnownSession, importKnownSessions, loadSessionCatalog, loadWorkspaceHistory, markSessionUnavailable, saveKnownSession, saveWorkspaceVisit } from "./sessionRepository";
 
 let data: Map<string, unknown>;
 beforeEach(() => {
@@ -12,6 +12,19 @@ beforeEach(() => {
 });
 
 describe("workspace visits and explicit metadata edits", () => {
+  it("merges listed sessions with concurrent app-created entries while preserving local names and archives", async () => {
+    await saveKnownSession("codex", "/one", "known");
+    await editKnownSession("codex", "/one", "known", { title: "Local title" });
+    await editKnownSession("codex", "/one", "known", { archivedAt: 1 });
+    await Promise.all([
+      importKnownSessions("codex", "/one", [{ cwd: "/one", sessionId: "known", title: "Vendor title" }, { cwd: "/one", sessionId: "discovered" }]),
+      saveKnownSession("codex", "/one", "created"),
+    ]);
+    const catalog = await loadSessionCatalog("codex");
+    expect(catalog.sessions).toHaveLength(3);
+    expect(catalog.sessions.find((entry) => entry.sessionId === "known")).toMatchObject({ title: "Local title", archivedAt: 1 });
+    expect((await loadSessionCatalog("copilot")).sessions).toEqual([]);
+  });
   it("serializes visits without losing either workspace or the legacy folder", async () => {
     data.set("lastCwd", "/legacy");
     await Promise.all([saveWorkspaceVisit("/first"), saveWorkspaceVisit("/second")]);

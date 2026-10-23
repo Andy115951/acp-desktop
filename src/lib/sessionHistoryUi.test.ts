@@ -38,6 +38,13 @@ describe("saved session picker", () => {
     expect(html).toContain("conversation history stays intact");
     expect(html).not.toContain("Delete");
   });
+  it("distinguishes advertised, unsupported and incomplete discovery", () => {
+    const props = { catalog, cwd: "/one", savedSessionId: "first", disabled: false, failed: false, locale: "en" as const, onSelect: () => {} };
+    expect(renderToStaticMarkup(createElement(SessionHistory, { ...props, listSupported: false }))).toContain("does not advertise session listing");
+    const partial = renderToStaticMarkup(createElement(SessionHistory, { ...props, listSupported: true, listIncomplete: true }));
+    expect(partial).toContain("Sessions discovered from your agent");
+    expect(partial).toContain("Some agent sessions could not be retrieved or saved");
+  });
 });
 
 describe("recent workspace picker", () => {

@@ -439,6 +439,12 @@ impl AcpSession {
                                     },
                                 );
 
+                                let discovered = crate::session_discovery::discover_sessions(
+                                    &connection, &agent_id_for_prompt, &cwd,
+                                    init.agent_capabilities.session_capabilities.list.is_some(),
+                                ).await;
+                                let _ = app.emit("acp://sessions", discovered);
+
                                 let sid = if let Some(saved_id) = resume_id {
                                     if !load_session_supported {
                                         let msg = "Agent does not advertise loadSession; Resume is unavailable. Use New session.";

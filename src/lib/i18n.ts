@@ -53,6 +53,9 @@ export type MessageKey =
   | "history.choose"
   | "history.empty"
   | "history.appKnown"
+  | "history.discovered"
+  | "history.listUnsupported"
+  | "history.listIncomplete"
   | "history.disconnect"
   | "history.failed"
   | "session.pickFolder"
@@ -182,7 +185,7 @@ const en: Dictionary = {
   "error.details": "Technical details",
   "error.general": "The request could not be completed. Open technical details for diagnostics, then retry.",
   "error.usageLimit": "The agent reached its usage or rate limit. Check its usage and retry later.",
-  "error.staleSession": "The saved session is missing or expired. Its Resume entry was cleared; start a new session.",
+  "error.staleSession": "The saved session is missing or expired. Its Resume entry was cleared; choose another saved session or start a new one.",
   "error.connection": "The connection could not be verified. Check the CLI's certificate and network configuration.",
   "error.auth": "The agent could not authenticate. Check its local CLI login or API configuration, then reconnect.",
   "error.workspace": "Pick a workspace folder before connecting.",
@@ -233,7 +236,10 @@ const en: Dictionary = {
   "history.label": "Saved sessions",
   "history.choose": "Choose a session",
   "history.empty": "No saved sessions for this workspace",
-  "history.appKnown": "Sessions known to this app for the selected agent and workspace. Conversation history is restored by the agent when you Resume.",
+  "history.appKnown": "Sessions known to this app for the selected agent and workspace. Connect refreshes discovery when supported. Conversation history is restored by the agent when you Resume.",
+  "history.discovered": "Sessions discovered from your agent and known to this app for this workspace. Disconnect to choose one, then Resume its conversation.",
+  "history.listUnsupported": "This agent does not advertise session listing. Showing sessions known to this app for this agent and workspace.",
+  "history.listIncomplete": "Some agent sessions could not be retrieved or saved. App-known and retrieved entries remain available; the conversation can continue.",
   "history.disconnect": "Disconnect before changing the workspace or saved session.",
   "history.failed": "Session metadata could not be loaded or saved. Your agent’s conversation history is unchanged; check local storage and try again.",
   "session.pickFolder": "Pick folder",
@@ -318,7 +324,7 @@ const zhCN: Dictionary = {
   "error.details": "技术详情",
   "error.general": "请求未能完成。可展开技术详情查看诊断信息，然后重试。",
   "error.usageLimit": "智能体已达到用量或请求频率上限。请检查用量，稍后重试。",
-  "error.staleSession": "已保存的会话缺失或已过期，恢复记录已清除。请新建会话。",
+  "error.staleSession": "已保存的会话缺失或已过期，恢复记录已清除。可选择其他已保存会话或新建会话。",
   "error.connection": "无法验证连接。请检查本机 CLI 的证书和网络配置。",
   "error.auth": "智能体认证失败。请检查本机 CLI 的登录状态或 API 配置，然后重新连接。",
   "error.workspace": "请先选择工作文件夹，再连接智能体。",
@@ -369,7 +375,10 @@ const zhCN: Dictionary = {
   "history.label": "已保存的会话",
   "history.choose": "选择会话",
   "history.empty": "此工作区暂无保存的会话",
-  "history.appKnown": "仅列出本应用已知的当前智能体、当前工作区会话；恢复时由智能体加载对话历史。",
+  "history.appKnown": "仅列出本应用已知的当前智能体、当前工作区会话；连接时按智能体支持的能力发现更多会话，恢复时由智能体加载对话历史。",
+  "history.discovered": "列出智能体发现及本应用已知的当前工作区会话。断开后选择会话，再恢复对话。",
+  "history.listUnsupported": "此智能体未声明会话列表能力，仅显示本应用已知的当前智能体、当前工作区会话。",
+  "history.listIncomplete": "部分智能体会话无法获取或保存，已知及已获取的会话仍可用，可继续当前对话。",
   "history.disconnect": "更换工作区或已保存的会话前，请先断开连接。",
   "history.failed": "无法读取或保存会话元数据。智能体的对话历史未改变；请检查本地存储后重试。",
   "session.pickFolder": "选择文件夹",
