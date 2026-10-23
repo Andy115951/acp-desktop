@@ -45,8 +45,8 @@ function resolveClaudeSpawn() {
 }
 
 function fail(msg) {
-  console.error(`${TAG}: FAIL — ${msg}`);
-  process.exit(1);
+  // Throw so main's finally block can terminate the adapter and remove cwd.
+  throw new Error(msg);
 }
 
 function ok(msg) {
@@ -81,7 +81,7 @@ function spawnAgent(argv) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error(`timed out after ${TIMEOUT_MS}ms waiting for ${method} (id=${id})`));
+        reject(new Error(`timed out after ${TIMEOUT_MS}ms waiting for ${method} (id=${id})\nstderr:\n${stderrBuf}`));
       }, TIMEOUT_MS);
       pending.set(id, {
         method,
@@ -230,12 +230,10 @@ async function initializeAgent(agent) {
   if (caps.loadSession !== true) {
     fail(`agentCapabilities.loadSession want true got ${JSON.stringify(caps.loadSession)}`);
   }
-  const methods = Array.isArray(result.authMethods) ? result.authMethods : [];
-  const ids = methods.map((m) => m && m.id).filter(Boolean);
-  for (const need of ["api-key", "chat-gpt"]) {
-    if (!ids.includes(need)) {
-      fail(`authMethods missing ${need}; got ${JSON.stringify(ids)}`);
-    }
+  // Authentication methods are provider-specific and may be empty when
+  // Claude uses existing local credentials. Codex method IDs do not apply.
+  if (result.authMethods != null && !Array.isArray(result.authMethods)) {
+    fail("authMethods must be an array when present");
   }
   return result;
 }
@@ -272,7 +270,7 @@ async function main() {
     ok(`protocolVersion ${init.protocolVersion}`);
     ok("advertises loadSession");
     const ids = (init.authMethods || []).map((m) => m && m.id).filter(Boolean);
-    ok(`authMethods include api-key + chat-gpt (${ids.join(", ")})`);
+    ok(`authMethods: ${ids.length ? ids.join(", ") : "none advertised"}`);
     if (init.agentInfo?.name) {
       ok(`agentInfo.name=${init.agentInfo.name} version=${init.agentInfo.version || "?"}`);
     }
@@ -369,8 +367,6 @@ async function main() {
     }
 
     console.log(`${TAG}: PASS (initialize + session/new + ${SKIP_PROMPT ? "skip-prompt" : "session/prompt"} + session/load)`);
-  } catch (err) {
-    fail(String(err?.stack || err?.message || err));
   } finally {
     if (agent) {
       try {
@@ -389,4 +385,7 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => fail(String(err?.stack || err)));
+main().catch((err) => {
+  console.error(`${TAG}: FAIL — ${err?.stack || err}`);
+  process.exitCode = 1;
+});
