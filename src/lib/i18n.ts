@@ -11,6 +11,14 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "agentInfo.title"
+  | "agentInfo.context"
+  | "agentInfo.contextUnknown"
+  | "agentInfo.commandsUnknown"
+  | "agentInfo.commandsEmpty"
+  | "agentInfo.commands"
+  | "agentInfo.insert"
+  | "agentInfo.insertHelp"
   | "badge.acpClient"
   | "header.taglineBefore"
   | "header.taglineAfter"
@@ -236,6 +244,14 @@ const en: Dictionary = {
   "history.label": "Saved sessions",
   "history.choose": "Choose a session",
   "history.empty": "No saved sessions for this workspace",
+  "agentInfo.title": "Agent session information",
+  "agentInfo.context": "Agent-reported context: {used} / {size} tokens",
+  "agentInfo.contextUnknown": "Context usage has not been reported by this agent.",
+  "agentInfo.commandsUnknown": "Commands have not been reported by this agent.",
+  "agentInfo.commandsEmpty": "This agent reports no available commands.",
+  "agentInfo.commands": "Agent commands ({count})",
+  "agentInfo.insert": "Insert /{name}",
+  "agentInfo.insertHelp": "Insert a command before your draft, add any arguments, then send when ready.",
   "history.appKnown": "Sessions known to this app for the selected agent and workspace. Connect refreshes discovery when supported. Conversation history is restored by the agent when you Resume.",
   "history.discovered": "Sessions discovered from your agent and known to this app for this workspace. Disconnect to choose one, then Resume its conversation.",
   "history.listUnsupported": "This agent does not advertise session listing. Showing sessions known to this app for this agent and workspace.",
@@ -375,6 +391,14 @@ const zhCN: Dictionary = {
   "history.label": "已保存的会话",
   "history.choose": "选择会话",
   "history.empty": "此工作区暂无保存的会话",
+  "agentInfo.title": "智能体会话信息",
+  "agentInfo.context": "智能体报告的上下文：{used} / {size} tokens",
+  "agentInfo.contextUnknown": "此智能体尚未报告上下文用量。",
+  "agentInfo.commandsUnknown": "此智能体尚未报告命令。",
+  "agentInfo.commandsEmpty": "此智能体报告当前没有可用命令。",
+  "agentInfo.commands": "智能体命令（{count}）",
+  "agentInfo.insert": "插入 /{name}",
+  "agentInfo.insertHelp": "将命令插入草稿前，补充参数后再发送。",
   "history.appKnown": "仅列出本应用已知的当前智能体、当前工作区会话；连接时按智能体支持的能力发现更多会话，恢复时由智能体加载对话历史。",
   "history.discovered": "列出智能体发现及本应用已知的当前工作区会话。断开后选择会话，再恢复对话。",
   "history.listUnsupported": "此智能体未声明会话列表能力，仅显示本应用已知的当前智能体、当前工作区会话。",

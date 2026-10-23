@@ -45,6 +45,8 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://github.com/Andy115951/acp-desktop/pull/8)): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences (`tauri-plugin-store`) keep lightweight per-agent session metadata and the last workspace folder (no chat history locally).
 
+**Agent session information:** while connected, the app shows slash commands and context usage reported by the current agent. A command button inserts its name before your draft; add arguments and send explicitly. Reports refresh during a session and reset on disconnect or context change. Missing reports remain unknown, and empty command lists are distinct from missing reports. Token counts are shown exactly as reported; the app does not estimate usage or normalize prices.
+
 **Saved sessions:** after Disconnect, choose an app-known session for the current agent/workspace and click Resume. New session keeps the earlier entries, and relaunch restores the most recently used session as the default. Existing cwd→sessionId preferences migrate automatically. Workspace/session selection is disabled until you disconnect; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. Use Recent workspaces to return to a previously opened folder. Rename changes only the app title; Archive app entry hides a record without deleting vendor history, and Archived sessions lets you restore it. These actions require a disconnected, idle session. Connect and Resume also discover vendor sessions when the agent advertises `sessionCapabilities.list`, following pagination for the selected workspace. Unsupported agents keep the app-known list. Discovery errors, repeated cursors or safety limits show an incomplete notice and keep existing entries usable (10 seconds total, up to 20 pages / 2,000 entries per connection). Local names, archives and stale-entry decisions are preserved.
 
 Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` / `cargo test -p acp-desktop` + Vitest/`tsc` (CI on push/PR) cover `session/request_permission` allow/deny and `loadSession` replay without Grok. Host deadline-drains `session/load` ActiveSession replay so Resume does not miss `fake-agent: resumed`.
@@ -139,7 +141,9 @@ permission requests issued before either decision. Starting the fake binary with
 `--stale-session` creates a session that is deliberately unavailable on Resume.
 `--list-sessions` advertises a two-page session list (including a foreign-workspace
 entry that the host must reject); `--list-error` advertises listing but fails the
-request so app-known fallback can be checked.
+request so app-known fallback can be checked. `--session-info` reports two commands
+and 2,048 / 8,192 context tokens on new/load; send `fake:clear-session-info` to
+replace the command list with an empty list and update usage to 4,096 tokens.
 These fixtures do not call a vendor API or perform the proposed tool actions.
 For conversation rendering, `fake:stream` emits thought/reply chunks and
 `fake:long-stream` emits 180 lines over several seconds for scroll testing.

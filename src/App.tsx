@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { AgentSessionInfo } from "./AgentSessionInfo";
 import { PermissionCard } from "./PermissionCard";
 import { ErrorNotice } from "./ErrorNotice";
 import { ChatTranscript } from "./ChatTranscript";
@@ -35,6 +36,8 @@ export default function App() {
     cwd,
     catalog,
     catalogError,
+    metadata,
+    insertCommand,
     sessionListSupported,
     sessionListIncomplete,
     switching,
@@ -426,6 +429,9 @@ export default function App() {
             </div>
           )}
         </ChatTranscript>
+
+        {connected ? <AgentSessionInfo metadata={metadata?.sessionId === sessionId ? metadata : null} locale={locale}
+          disabled={busy || switching || !!permission} onCommand={insertCommand} /> : null}
 
         <div className="flex items-end gap-2">
           <textarea

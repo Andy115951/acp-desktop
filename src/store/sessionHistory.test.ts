@@ -287,3 +287,58 @@ describe("history I/O context races", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("connect_agent", expect.objectContaining({ resumeSessionId: null }));
   });
 });
+
+
+describe("agent session information", () => {
+  const info = { agentId: "codex", cwd: "/workspace", sessionId: "active", commands: [{ name: "review", description: "Review", inputHint: "Files" }] };
+  async function start() {
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("new");
+    useSessionStore.setState({ connected: true, sessionId: "active" });
+    return cleanup;
+  }
+  it("keeps metadata out of the transcript and inserts only an advertised command without sending", async () => {
+    const cleanup = await start();
+    const lines = useSessionStore.getState().lines;
+    mocks.handlers.get("acp://metadata")!({ payload: info });
+    useSessionStore.setState({ draft: "file.ts" });
+    useSessionStore.getState().insertCommand("unknown");
+    expect(useSessionStore.getState().draft).toBe("file.ts");
+    useSessionStore.getState().insertCommand("review");
+    expect(useSessionStore.getState().draft).toBe("/review file.ts");
+    expect(useSessionStore.getState().lines).toBe(lines);
+    expect(mocks.invoke).not.toHaveBeenCalledWith("send_prompt", expect.anything()); cleanup();
+  });
+  it("replaces reported commands including empty lists while preserving independent usage", async () => {
+    const cleanup = await start();
+    mocks.handlers.get("acp://metadata")!({ payload: info });
+    mocks.handlers.get("acp://metadata")!({ payload: { agentId: "codex", cwd: "/workspace", sessionId: "active", usage: { used: "0", size: "18446744073709551615" } } });
+    expect(useSessionStore.getState().metadata?.commands).toEqual(info.commands);
+    mocks.handlers.get("acp://metadata")!({ payload: { ...info, commands: [] } });
+    expect(useSessionStore.getState().metadata).toMatchObject({ commands: [], usage: { used: "0", size: "18446744073709551615" } }); cleanup();
+  });
+  it("rejects foreign identities and metadata arriving after disconnect", async () => {
+    const cleanup = await start();
+    for (const patch of [{ agentId: "grok" }, { cwd: "/other" }, { sessionId: "other" }]) {
+      mocks.handlers.get("acp://metadata")!({ payload: { ...info, ...patch } });
+    }
+    expect(useSessionStore.getState().metadata).toBeNull();
+    mocks.handlers.get("acp://metadata")!({ payload: info });
+    await useSessionStore.getState().disconnect();
+    mocks.handlers.get("acp://metadata")!({ payload: info });
+    expect(useSessionStore.getState().metadata).toBeNull(); cleanup();
+  });
+  it("disables insertion during turns and pending permission and clears reports on reconnect", async () => {
+    const cleanup = await start();
+    mocks.handlers.get("acp://metadata")!({ payload: info });
+    useSessionStore.setState({ busy: true, draft: "keep" });
+    useSessionStore.getState().insertCommand("review");
+    expect(useSessionStore.getState().draft).toBe("keep");
+    useSessionStore.setState({ busy: false, permission: { requestId: 1, title: "Ask", detail: "", options: [] } });
+    useSessionStore.getState().insertCommand("review");
+    expect(useSessionStore.getState().draft).toBe("keep");
+    await useSessionStore.getState().disconnect();
+    await useSessionStore.getState().connect("new");
+    expect(useSessionStore.getState().metadata).toBeNull(); cleanup();
+  });
+});

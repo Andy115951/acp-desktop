@@ -1,3 +1,4 @@
+import { mergeSessionMetadata, type SessionMetadata } from "../lib/sessionMetadata";
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -76,6 +77,8 @@ type SessionState = {
   catalogError: boolean;
   sessionListSupported: boolean | null;
   sessionListIncomplete: boolean;
+  metadata: SessionMetadata | null;
+  insertCommand: (name: string) => void;
   recentWorkspaces: RecentWorkspace[];
   workspaceError: boolean;
   selectWorkspace: (cwd: string) => Promise<void>;
@@ -153,7 +156,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   catalog: emptyCatalog(),
   catalogError: false,
   sessionListSupported: null,
-  sessionListIncomplete: false,
+  sessionListIncomplete: false, metadata: null,
   recentWorkspaces: [],
   workspaceError: false,
   renameSavedSession: (title) => editSavedEntry({ type: "rename", title }),
@@ -175,7 +178,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         workspaceError = true;
       }
       if (generation !== contextGeneration || currentAgentId() !== agentId) return;
-      set({ ...context, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null, sessionListSupported: null, sessionListIncomplete: false,
+      set({ ...context, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null, sessionListSupported: null, sessionListIncomplete: false, metadata: null,
         loadSessionSupported: null, lines: [], permission: null, draft: "" });
     } finally {
       if (generation === contextGeneration) set({ switching: false });
@@ -198,6 +201,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   permission: null,
   draft: "",
   setDraft: (v) => set({ draft: v }),
+  insertCommand: (name) => {
+    const state = get();
+    if (!state.connected || state.busy || state.permission || state.switching || state.metadata?.sessionId !== state.sessionId
+      || !state.metadata?.commands?.some(command => command.name === name)) return;
+    set({ draft: `/${name} ${state.draft}` });
+  },
   clearTranscript: () => set(sessionPatchAfterClear()),
   pickFolder: async () => {
     if (get().connected || get().busy || get().permission || get().switching) return;
@@ -240,7 +249,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!get().cwd) { await get().hydrateFromPrefs(); return; }
     const generation = ++contextGeneration;
     const cwd = get().cwd;
-    set({ ...sessionPatchAfterAgentSwitch(null), catalog: emptyCatalog(), switching: true, draft: "", sessionListSupported: null, sessionListIncomplete: false });
+    set({ ...sessionPatchAfterAgentSwitch(null), catalog: emptyCatalog(), switching: true, draft: "", sessionListSupported: null, sessionListIncomplete: false, metadata: null });
     const context = await loadCatalogContext(agentId, cwd);
     if (generation !== contextGeneration || currentAgentId() !== agentId || get().cwd !== cwd) return;
     set({ ...context, switching: false });
@@ -272,8 +281,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({
       error: null,
       busy: true,
+      sessionId: null,
       sessionListSupported: null,
-      sessionListIncomplete: false,
+      sessionListIncomplete: false, metadata: null,
       // Clear prior transcript on New or Resume so old turns never mix with
       // a fresh session/new or session/load. Status marker distinguishes an
       // empty connect from "events never arrived".
@@ -344,6 +354,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         connected: false,
         busy: false,
         sessionId: null,
+        metadata: null,
         permission: null,
         lines: recordToolDecision(get().lines, get().permission?.tool?.id, "cancelled"),
       });
@@ -433,6 +444,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   bindEvents: async () => {
     const unsubs: UnlistenFn[] = [];
+    unsubs.push(await listen<SessionMetadata>("acp://metadata", (ev) => {
+      const update = ev.payload;
+      const state = get();
+      if (update.agentId !== currentAgentId() || update.agentId !== connectionAgentId || update.cwd !== state.cwd
+        || (!state.connected && !state.busy) || (state.sessionId && state.sessionId !== update.sessionId)) return;
+      set({ metadata: mergeSessionMetadata(state.metadata, update) });
+    }));
     unsubs.push(
       await listen<{ kind: string; text: string; tool?: ToolData }>("acp://stream", (ev) => {
         // Functional update preserves back-to-back chunks and replay order.
@@ -548,6 +566,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         }
 
         set({
+          ...(!ev.payload.connected ? { metadata: null } : {}),
           connected: ev.payload.connected,
           cwd: cwd ?? get().cwd,
           sessionId: sessionId ?? (ev.payload.connected ? get().sessionId : null),
