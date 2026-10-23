@@ -1,6 +1,24 @@
 /** Pure UI hints for vendor auth / install (unit-tested; no Tauri). */
 
 import { t, type Locale } from "./i18n";
+import type { AgentInfo } from "../store/agents";
+
+/** Localize app-owned notes by code; preserve unfamiliar host diagnostics. */
+export function agentDetailHint(
+  agent: Pick<AgentInfo, "id" | "detail" | "detailCode">,
+  locale: Locale = "en",
+): string | null {
+  if (
+    agent.detailCode === "npx_fallback" &&
+    (agent.id === "codex" || agent.id === "claude")
+  ) {
+    return t(locale, "agents.npxFallback", {
+      cli: agent.id,
+      adapter: agent.id === "codex" ? "codex-acp" : "claude-agent-acp",
+    });
+  }
+  return agent.detail || null;
+}
 
 /**
  * Short Agents-panel note for the selected connectable agent.

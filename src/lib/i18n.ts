@@ -24,6 +24,7 @@ export type MessageKey =
   | "agents.available"
   | "agents.missing"
   | "agents.missingSuffix"
+  | "agents.npxFallback"
   | "dev.title"
   | "dev.blurbBefore"
   | "dev.blurbAfter"
@@ -84,6 +85,8 @@ const en: Dictionary = {
   "agents.available": "available",
   "agents.missing": "missing",
   "agents.missingSuffix": " (missing)",
+  "agents.npxFallback":
+    "{cli} on PATH; Connect spawns via npx (@agentclientprotocol/{adapter}). Install `{adapter}` globally to skip the download.",
   "dev.title": "Dev: fake ACP agent",
   "dev.blurbBefore": "Deterministic ",
   "dev.blurbAfter":
@@ -149,6 +152,8 @@ const zhCN: Dictionary = {
   "agents.available": "可用",
   "agents.missing": "未找到",
   "agents.missingSuffix": "（未找到）",
+  "agents.npxFallback":
+    "已在 PATH 中找到 {cli}；连接时通过 npx 启动 @agentclientprotocol/{adapter}。可全局安装 `{adapter}` 以跳过下载。",
   "dev.title": "开发：假 ACP agent",
   "dev.blurbBefore": "确定性 ",
   "dev.blurbAfter":
