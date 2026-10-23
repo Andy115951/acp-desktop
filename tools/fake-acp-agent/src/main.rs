@@ -19,10 +19,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_client_protocol::schema::v1::{
     AgentCapabilities, CancelNotification, ContentBlock, ContentChunk, Diff, InitializeRequest,
-    InitializeResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
+    InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
     NewSessionResponse, PermissionOption, PermissionOptionKind, PromptRequest, PromptResponse,
     RequestPermissionOutcome, RequestPermissionRequest, SessionId, SessionNotification,
-    SessionUpdate, StopReason, TextContent, ToolCall, ToolCallLocation, ToolCallStatus,
+    SessionCapabilities, SessionInfo, SessionListCapabilities, SessionUpdate, StopReason, TextContent, ToolCall, ToolCallLocation, ToolCallStatus,
     ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Stdio};
@@ -87,10 +87,35 @@ async fn main() -> agent_client_protocol::Result<()> {
         .name("fake-acp-agent")
         .on_receive_request(
             async move |initialize: InitializeRequest, responder, _connection| {
+                let mut capabilities = AgentCapabilities::new().load_session(true);
+                if std::env::args().any(|arg| arg == "--list-sessions" || arg == "--list-error") {
+                    capabilities = capabilities.session_capabilities(SessionCapabilities::new().list(SessionListCapabilities::new()));
+                }
                 responder.respond(
                     InitializeResponse::new(initialize.protocol_version)
-                        .agent_capabilities(AgentCapabilities::new().load_session(true)),
+                        .agent_capabilities(capabilities),
                 )
+            },
+            agent_client_protocol::on_receive_request!(),
+        )
+        .on_receive_request(
+            async move |request: ListSessionsRequest, responder, _connection| {
+                if std::env::args().any(|arg| arg == "--list-error") {
+                    return responder.respond_with_error(Error::internal_error().data("fixture listing unavailable"));
+                }
+                if !std::env::args().any(|arg| arg == "--list-sessions") {
+                    return responder.respond_with_error(Error::method_not_found());
+                }
+                let cwd = request.cwd.unwrap_or_else(|| "/fixture".into());
+                let page = if request.cursor.as_deref() == Some("second-page") {
+                    ListSessionsResponse::new(vec![SessionInfo::new("fake-session-99", cwd).title("Discovered second page")])
+                } else {
+                    ListSessionsResponse::new(vec![
+                        SessionInfo::new("fake-session-42", cwd).title("Discovered first page").updated_at("2026-01-01T00:00:00Z"),
+                        SessionInfo::new("fake-session-888", "/foreign-workspace").title("Foreign workspace"),
+                    ]).next_cursor("second-page")
+                };
+                responder.respond(page)
             },
             agent_client_protocol::on_receive_request!(),
         )

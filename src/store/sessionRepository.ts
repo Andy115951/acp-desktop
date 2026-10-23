@@ -1,6 +1,6 @@
 import { Store } from "@tauri-apps/plugin-store";
 import { PREFS_KEY_LAST_CWD, sessionPrefsKey } from "../lib/sessionPrefs";
-import { editSession, invalidateSession, readSessionCatalog, rememberSession, sessionCatalogKey, type SessionCatalog } from "../lib/sessionCatalog";
+import { editSession, invalidateSession, mergeDiscoveredSessions, readSessionCatalog, rememberSession, sessionCatalogKey, type DiscoveredSession, type SessionCatalog } from "../lib/sessionCatalog";
 import { WORKSPACE_HISTORY_KEY, readWorkspaceHistory, visitWorkspace, type WorkspaceHistory } from "../lib/workspaceHistory";
 
 let storePromise: Promise<Store> | undefined;
@@ -66,6 +66,17 @@ export function editKnownSession(agentId: string, cwd: string, sessionId: string
       await prefs.set(key, catalog).catch(() => undefined);
       throw error;
     }
+    return next;
+  });
+}
+
+export function importKnownSessions(agentId: string, cwd: string, entries: DiscoveredSession[]): Promise<SessionCatalog> {
+  return serialized(async () => {
+    const { prefs, catalog } = await read(agentId);
+    const key = sessionCatalogKey(agentId);
+    const next = mergeDiscoveredSessions(catalog, cwd, entries);
+    try { await prefs.set(key, next); await prefs.save(); }
+    catch (error) { await prefs.set(key, catalog).catch(() => undefined); throw error; }
     return next;
   });
 }

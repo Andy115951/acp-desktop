@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { editSession, invalidateSession, readSessionCatalog, rememberSession, sessionCatalogKey, sessionsForWorkspace, validSessionTitle } from "./sessionCatalog";
+import { editSession, invalidateSession, mergeDiscoveredSessions, readSessionCatalog, rememberSession, sessionCatalogKey, sessionsForWorkspace, validSessionTitle } from "./sessionCatalog";
 
 describe("session catalog migration and isolation", () => {
   it("migrates every valid legacy workspace without inventing titles or timestamps", () => {
@@ -45,6 +45,27 @@ describe("session catalog migration and isolation", () => {
   it("uses separate namespaces even for identical folders and IDs across agents", () => {
     expect(sessionCatalogKey("codex")).not.toBe(sessionCatalogKey("copilot"));
     expect(sessionCatalogKey("my-custom-agent")).toBe("my-custom-agent.sessions.v1");
+  });
+});
+
+describe("vendor session metadata import", () => {
+  it("retains app names, archive tombstones and stale-ID decisions", () => {
+    let catalog = readSessionCatalog(null, { "/one": "old" });
+    catalog = editSession(catalog, "/one", "old", { title: "My name" });
+    catalog = editSession(invalidateSession(catalog, "/one", "old"), "/one", "old", { archivedAt: 1 });
+    const next = mergeDiscoveredSessions(catalog, "/one", [{ cwd: "/one", sessionId: "old", title: "Vendor name", updatedAt: "2026-01-01T00:00:00Z" }]);
+    expect(next.sessions[0]).toMatchObject({ title: "My name", archivedAt: 1, unavailable: true, createdAt: 0 });
+    expect(sessionsForWorkspace(next, "/one")).toEqual([]);
+  });
+  it("imports only matching workspaces, deduplicates IDs and does not invent timestamps", () => {
+    const next = mergeDiscoveredSessions(readSessionCatalog(null, {}), "/one", [
+      { cwd: "/other", sessionId: "foreign" }, { cwd: "/one", sessionId: "" },
+      { cwd: "/one", sessionId: "first", title: "Vendor title", updatedAt: "invalid" },
+      { cwd: "/one", sessionId: "first" }, { cwd: "/one", sessionId: "second", updatedAt: "2026-01-01T00:00:00Z" },
+    ]);
+    expect(next.sessions).toHaveLength(2);
+    expect(next.sessions[0]).toMatchObject({ sessionId: "first", title: "Vendor title", updatedAt: 0, createdAt: 0 });
+    expect(next.sessions[1].updatedAt).toBe(Date.parse("2026-01-01T00:00:00Z"));
   });
 });
 

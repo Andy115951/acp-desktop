@@ -35,6 +35,8 @@ export default function App() {
     cwd,
     catalog,
     catalogError,
+    sessionListSupported,
+    sessionListIncomplete,
     switching,
     selectSavedSession,
     recentWorkspaces,
@@ -382,7 +384,8 @@ export default function App() {
         <SessionHistory catalog={catalog} cwd={cwd} savedSessionId={savedSessionId}
           disabled={connected || busy || !!permission || switching} failed={catalogError}
           locale={locale} onSelect={selectSavedSession} onRename={renameSavedSession}
-          onArchive={archiveSavedSession} onRestore={restoreSavedSession} />
+          onArchive={archiveSavedSession} onRestore={restoreSavedSession}
+          listSupported={sessionListSupported} listIncomplete={sessionListIncomplete} />
         <p className="text-xs text-slate-500 break-all">
           {t(locale, "session.cwd")}: {cwd ?? "—"}{" "}
           {sessionId

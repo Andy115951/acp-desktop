@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { SESSION_TITLE_LIMIT, sessionsForWorkspace, type SessionCatalog } from "./lib/sessionCatalog";
 import { t, type Locale } from "./lib/i18n";
 
-export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed, locale, onSelect, onRename, onArchive, onRestore }: {
+export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed, locale, onSelect, onRename, onArchive, onRestore, listSupported, listIncomplete }: {
   catalog: SessionCatalog;
   cwd: string | null;
   savedSessionId: string | null;
@@ -13,6 +13,8 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
   onRename?: (title: string) => Promise<boolean>;
   onArchive?: () => Promise<boolean>;
   onRestore?: (sessionId: string) => Promise<boolean>;
+  listSupported?: boolean | null;
+  listIncomplete?: boolean;
 }) {
   const entries = cwd ? sessionsForWorkspace(catalog, cwd) : [];
   const selected = entries.find((entry) => entry.sessionId === savedSessionId);
@@ -71,7 +73,8 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
             className="text-xs text-slate-400">{t(locale, "history.cancel")}</button>
         </form>
       ) : null}
-      <p className="text-xs text-slate-500">{t(locale, "history.appKnown")}</p>
+      <p className="text-xs text-slate-500">{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>
+      {listIncomplete ? <p role="status" className="text-xs text-amber-200">{t(locale, "history.listIncomplete")}</p> : null}
       {disabled ? <p className="text-xs text-slate-400">{t(locale, "history.disconnect")}</p> : null}
       {failed ? <p role="alert" className="text-xs text-amber-200">{t(locale, "history.failed")}</p> : null}
       {onRestore && archived.length > 0 ? (

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { editSession, readSessionCatalog, rememberSession } from "../lib/sessionCatalog";
+import { editSession, mergeDiscoveredSessions, readSessionCatalog, rememberSession } from "../lib/sessionCatalog";
 
 const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(), open: vi.fn(), load: vi.fn(), save: vi.fn(), invalidate: vi.fn(), edit: vi.fn(), loadWorkspaces: vi.fn(), visit: vi.fn(),
+  invoke: vi.fn(), open: vi.fn(), load: vi.fn(), save: vi.fn(), invalidate: vi.fn(), edit: vi.fn(), loadWorkspaces: vi.fn(), visit: vi.fn(), importSessions: vi.fn(),
   get: vi.fn(), set: vi.fn(), persist: vi.fn(), handlers: new Map<string, (event: { payload: unknown }) => void>(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/plugin-store", () => ({ Store: { load: async () => ({ get: 
 vi.mock("@tauri-apps/api/event", () => ({ listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
   mocks.handlers.set(name, handler); return () => mocks.handlers.delete(name);
 } }));
-vi.mock("./sessionRepository", () => ({ loadSessionCatalog: mocks.load, saveKnownSession: mocks.save, markSessionUnavailable: mocks.invalidate, editKnownSession: mocks.edit, loadWorkspaceHistory: mocks.loadWorkspaces, saveWorkspaceVisit: mocks.visit }));
+vi.mock("./sessionRepository", () => ({ loadSessionCatalog: mocks.load, saveKnownSession: mocks.save, markSessionUnavailable: mocks.invalidate, editKnownSession: mocks.edit, loadWorkspaceHistory: mocks.loadWorkspaces, saveWorkspaceVisit: mocks.visit, importKnownSessions: mocks.importSessions }));
 import { useAgentsStore } from "./agents";
 import { useSessionStore } from "./session";
 
@@ -26,6 +26,7 @@ beforeEach(async () => {
   mocks.load.mockResolvedValue(catalog);
   mocks.save.mockResolvedValue(catalog);
   mocks.invalidate.mockResolvedValue(catalog);
+  mocks.importSessions.mockImplementation(async (_agent, cwd, entries) => mergeDiscoveredSessions(catalog, cwd, entries));
   mocks.edit.mockImplementation(async (_agent, cwd, id, change) => editSession(catalog, cwd, id, change));
   mocks.loadWorkspaces.mockResolvedValue({ version: 1, workspaces: [{ cwd: "/workspace", lastOpenedAt: 0 }] });
   mocks.visit.mockImplementation(async (cwd) => ({ version: 1, workspaces: [{ cwd, lastOpenedAt: 1 }, { cwd: "/workspace", lastOpenedAt: 0 }] }));
@@ -34,8 +35,77 @@ beforeEach(async () => {
   mocks.persist.mockResolvedValue(undefined);
   useAgentsStore.setState({ selectedAgentId: "codex" });
   useSessionStore.setState({ cwd: "/workspace", catalog, connected: false, busy: false, switching: false,
-    catalogError: false, recentWorkspaces: [], workspaceError: false, permission: null, savedSessionId: "second", sessionId: null, error: null, loadSessionSupported: null,
+    catalogError: false, sessionListSupported: null, sessionListIncomplete: false, recentWorkspaces: [], workspaceError: false, permission: null, savedSessionId: "second", sessionId: null, error: null, loadSessionSupported: null,
     lines: [{ id: "old", kind: "agent_message", text: "old transcript" }], draft: "old draft" });
+});
+
+describe("capability-gated discovery events", () => {
+  const event = { agentId: "codex", cwd: "/workspace", supported: true, incomplete: false,
+    sessions: [{ cwd: "/workspace", sessionId: "discovered", title: "Vendor session" }] };
+  it("imports metadata without selecting a different ID or adding transcript content", async () => {
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("new");
+    useSessionStore.setState({ connected: true });
+    const lines = useSessionStore.getState().lines;
+    mocks.handlers.get("acp://sessions")!({ payload: event }); await flush();
+    expect(mocks.importSessions).toHaveBeenCalledWith("codex", "/workspace", event.sessions);
+    expect(useSessionStore.getState().savedSessionId).toBe("second");
+    expect(useSessionStore.getState().lines).toBe(lines);
+    expect(useSessionStore.getState().catalog.sessions.find((entry) => entry.sessionId === "discovered")?.title).toBe("Vendor session");
+    cleanup();
+  });
+  it("ignores events for a different agent or workspace", async () => {
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("new");
+    useSessionStore.setState({ connected: true });
+    mocks.handlers.get("acp://sessions")!({ payload: { ...event, agentId: "copilot" } });
+    mocks.handlers.get("acp://sessions")!({ payload: { ...event, cwd: "/other" } });
+    expect(mocks.importSessions).not.toHaveBeenCalled(); cleanup();
+  });
+  it("keeps the app-known catalog on unsupported or failed discovery", async () => {
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("new");
+    useSessionStore.setState({ connected: true });
+    const known = useSessionStore.getState().catalog;
+    mocks.handlers.get("acp://sessions")!({ payload: { ...event, supported: false, sessions: [] } });
+    expect(useSessionStore.getState().catalog).toEqual(known);
+    expect(useSessionStore.getState().sessionListSupported).toBe(false);
+    mocks.handlers.get("acp://sessions")!({ payload: { ...event, incomplete: true, sessions: [] } });
+    expect(useSessionStore.getState()).toMatchObject({ error: null, sessionListIncomplete: true });
+    expect(mocks.importSessions).not.toHaveBeenCalled(); cleanup();
+  });
+  it("does not replace another agent's catalog after a delayed import", async () => {
+    let finish!: (value: typeof catalog) => void;
+    mocks.importSessions.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("new");
+    useSessionStore.setState({ connected: true });
+    mocks.handlers.get("acp://sessions")!({ payload: event });
+    await useSessionStore.getState().disconnect();
+    useAgentsStore.setState({ selectedAgentId: "copilot" });
+    const other = readSessionCatalog(null, { "/workspace": "copilot" });
+    mocks.load.mockResolvedValueOnce(other);
+    await useSessionStore.getState().reloadForAgent("copilot");
+    finish(catalog); await flush();
+    expect(useSessionStore.getState().catalog).toEqual(other); cleanup();
+  });
+  it("keeps discovery storage failure visible without blocking the connection", async () => {
+    mocks.importSessions.mockRejectedValueOnce(new Error("disk full"));
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("new");
+    useSessionStore.setState({ connected: true });
+    mocks.handlers.get("acp://sessions")!({ payload: event }); await flush();
+    mocks.handlers.get("acp://status")!({ payload: { connected: true, busy: false, cwd: "/workspace", sessionId: "second" } }); await flush();
+    expect(useSessionStore.getState()).toMatchObject({ connected: true, error: null, sessionListIncomplete: true });
+    cleanup();
+  });
+  it("ignores a delayed event after Disconnect", async () => {
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("new");
+    await useSessionStore.getState().disconnect();
+    mocks.handlers.get("acp://sessions")!({ payload: event });
+    expect(mocks.importSessions).not.toHaveBeenCalled(); cleanup();
+  });
 });
 
 describe("app-known session selection", () => {

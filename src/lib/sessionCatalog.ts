@@ -91,3 +91,24 @@ export function editSession(catalog: SessionCatalog, cwd: string, sessionId: str
   return { version: 1, sessions: catalog.sessions.map((entry) =>
     entry.cwd === cwd && entry.sessionId === sessionId ? { ...entry, ...patch } : entry) };
 }
+
+export type DiscoveredSession = { sessionId: string; cwd: string; title?: string | null; updatedAt?: string | null };
+
+/** Listing supplements metadata; local names, archives and stale-ID decisions win. */
+export function mergeDiscoveredSessions(catalog: SessionCatalog, cwd: string, entries: DiscoveredSession[]): SessionCatalog {
+  const sessions = [...catalog.sessions];
+  for (const entry of entries) {
+    if (entry.cwd !== cwd || !isPlausibleCwd(entry.cwd) || !validId(entry.sessionId)) continue;
+    const index = sessions.findIndex((item) => item.cwd === cwd && item.sessionId === entry.sessionId);
+    const parsed = typeof entry.updatedAt === "string" ? Date.parse(entry.updatedAt) : NaN;
+    const updatedAt = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    const title = typeof entry.title === "string" && validSessionTitle(entry.title) ? entry.title.trim() : null;
+    if (index < 0) {
+      sessions.push({ cwd, sessionId: entry.sessionId, title, createdAt: 0, updatedAt, unavailable: false });
+    } else {
+      const old = sessions[index];
+      sessions[index] = { ...old, title: old.title ?? title, updatedAt: Math.max(old.updatedAt, updatedAt) };
+    }
+  }
+  return { version: 1, sessions };
+}
