@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
     ContentBlock, InitializeRequest, NewSessionRequest, PermissionOptionKind, PromptRequest,
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
     SelectedPermissionOutcome, SessionNotification, SessionUpdate, StopReason, TextContent,
 };
+use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{AcpAgent, Agent, Client, ConnectionTo};
 
 fn fake_agent() -> AcpAgent {
@@ -122,6 +122,21 @@ async fn run_scenario(select_option: Option<&str>, prompt: &str) -> (StopReason,
     let text = outcome.agent_text.lock().unwrap().clone();
     let saw = *outcome.saw_permission.lock().unwrap();
     (reason, text, saw)
+}
+
+#[tokio::test]
+async fn streaming_fixture_sends_multiple_exact_text_chunks_without_permission() {
+    let (reason, text, saw) = run_scenario(None, "fake:stream").await;
+    assert_eq!(reason, StopReason::EndTurn);
+    assert!(!saw);
+    assert!(
+        text.starts_with("Line 1: streamed text · 中文 🦊\n"),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("Line 8: streamed text · 中文 🦊\n"),
+        "{text}"
+    );
 }
 
 #[tokio::test]

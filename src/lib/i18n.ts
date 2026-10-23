@@ -76,11 +76,39 @@ export type MessageKey =
   | "error.workspace"
   | "error.noSavedSession"
   | "error.resumeUnsupported"
-  | "error.startup";
+  | "error.startup"
+  | "chat.you"
+  | "chat.agent"
+  | "chat.thinking"
+  | "chat.tool"
+  | "chat.plan"
+  | "chat.status"
+  | "chat.newSession"
+  | "chat.resuming"
+  | "chat.resumed"
+  | "chat.turnEnded"
+  | "chat.transcript"
+  | "chat.latest"
+  | "chat.message"
+  | "chat.composerHelp";
 
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "chat.you": "You",
+  "chat.agent": "Assistant",
+  "chat.thinking": "Thinking",
+  "chat.tool": "Tool",
+  "chat.plan": "Plan",
+  "chat.status": "Status",
+  "chat.newSession": "New session",
+  "chat.resuming": "Restoring conversation…",
+  "chat.resumed": "Conversation restored",
+  "chat.turnEnded": "Turn ended · {reason}",
+  "chat.transcript": "Conversation",
+  "chat.latest": "Jump to latest",
+  "chat.message": "Message",
+  "chat.composerHelp": "Enter to send · Shift+Enter for a new line",
   "error.details": "Technical details",
   "error.general": "The request could not be completed. Open technical details for diagnostics, then retry.",
   "error.usageLimit": "The agent reached its usage or rate limit. Check its usage and retry later.",
@@ -158,6 +186,20 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "chat.you": "你",
+  "chat.agent": "助手",
+  "chat.thinking": "思考过程",
+  "chat.tool": "工具",
+  "chat.plan": "计划",
+  "chat.status": "状态",
+  "chat.newSession": "新会话",
+  "chat.resuming": "正在恢复对话…",
+  "chat.resumed": "对话已恢复",
+  "chat.turnEnded": "本轮结束 · {reason}",
+  "chat.transcript": "对话",
+  "chat.latest": "跳到最新消息",
+  "chat.message": "消息",
+  "chat.composerHelp": "Enter 发送 · Shift+Enter 换行",
   "error.details": "技术详情",
   "error.general": "请求未能完成。可展开技术详情查看诊断信息，然后重试。",
   "error.usageLimit": "智能体已达到用量或请求频率上限。请检查用量，稍后重试。",

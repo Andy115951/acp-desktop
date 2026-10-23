@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { PermissionCard } from "./PermissionCard";
 import { ErrorNotice } from "./ErrorNotice";
+import { ChatTranscript } from "./ChatTranscript";
 import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
@@ -51,6 +52,7 @@ export default function App() {
     bindEvents,
   } = useSessionStore();
   const { locale, hydrateLocale, setLocale } = useUiStore();
+  const composingRef = useRef(false);
 
   useEffect(() => {
     void hydrateLocale();
@@ -429,34 +431,8 @@ export default function App() {
           <ErrorNotice error={error} locale={locale} />
         ) : null}
 
-        <div className="h-64 overflow-y-auto rounded-lg border border-slate-800 bg-black/30 p-3 text-sm space-y-2">
-          {lines.length === 0 && !permission ? (
-            <p className="text-slate-600">
-              {t(locale, "session.transcriptEmpty")}
-            </p>
-          ) : (
-            lines.map((line) => (
-              <div key={line.id} className="whitespace-pre-wrap">
-                <span className="mr-2 text-[10px] uppercase tracking-wide text-slate-500">
-                  {line.kind}
-                </span>
-                <span
-                  className={
-                    line.kind === "user"
-                      ? "text-sky-200"
-                      : line.kind === "agent_thought"
-                        ? "text-violet-300/80 italic"
-                        : line.kind === "status"
-                          ? "text-amber-200/90"
-                          : "text-slate-100"
-                  }
-                >
-                  {line.text}
-                </span>
-              </div>
-            ))
-          )}
-          {permission ? (
+        <ChatTranscript lines={lines} locale={locale} resetKey={`${selectedAgentId}:${cwd}:${sessionId}`}>
+          {permission && (
             <div ref={permissionCardRef}>
               <PermissionCard
                 permission={permission}
@@ -465,15 +441,20 @@ export default function App() {
                 locale={locale}
               />
             </div>
-          ) : null}
-        </div>
+          )}
+        </ChatTranscript>
 
-        <div className="flex gap-2">
-          <input
+        <div className="flex items-end gap-2">
+          <textarea
+            rows={3}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
+            onBlur={() => { composingRef.current = false; }}
             onKeyDown={(e) => {
-              if (!draftEnterShouldSend(!!permission, e.key, e.shiftKey)) return;
+              if (!draftEnterShouldSend(!!permission, e.key, e.shiftKey,
+                composingRef.current || e.nativeEvent.isComposing, e.nativeEvent.keyCode)) return;
               e.preventDefault();
               void send();
             }}
@@ -487,7 +468,9 @@ export default function App() {
                     })
                 : t(locale, "session.placeholderIdle")
             }
-            className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 disabled:opacity-50"
+            aria-label={t(locale, "chat.message")}
+            aria-describedby="composer-help"
+            className="max-h-64 min-w-0 flex-1 resize-y rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm leading-6 text-white placeholder:text-slate-600 disabled:opacity-50"
           />
           <button
             type="button"
@@ -513,6 +496,7 @@ export default function App() {
             {t(locale, "session.cancel")}
           </button>
         </div>
+        <p id="composer-help" className="text-xs text-slate-500">{t(locale, "chat.composerHelp")}</p>
       </section>
     </main>
   );
