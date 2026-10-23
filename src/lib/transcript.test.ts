@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ChatTranscript } from "../ChatTranscript";
-import { appendStreamLine, sealTranscript, isNearTranscriptBottom, type StreamLine } from "./transcript";
+import { appendStreamLine, sealTranscript, isNearTranscriptBottom, followsAfterScroll, type StreamLine } from "./transcript";
 
 function event(id: string, kind: string, text: string): StreamLine {
   return { id, kind, text };
@@ -65,5 +65,11 @@ describe("conversation presentation", () => {
     expect(isNearTranscriptBottom(760, 1000, 240)).toBe(true);
     expect(isNearTranscriptBottom(735, 1000, 240)).toBe(true);
     expect(isNearTranscriptBottom(120, 1000, 240)).toBe(false);
+  });
+  it("keeps following deferred layout growth, but stops for upward reading", () => {
+    expect(followsAfterScroll(true, 760, 760, 1200, 240)).toBe(true);
+    expect(followsAfterScroll(true, 760, 600, 1200, 240)).toBe(false);
+    expect(followsAfterScroll(false, 600, 700, 1200, 240)).toBe(false);
+    expect(followsAfterScroll(false, 700, 960, 1200, 240)).toBe(true);
   });
 });

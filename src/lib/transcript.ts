@@ -74,3 +74,10 @@ export function recordToolDecision(lines: StreamLine[], id: string | undefined, 
 export function isNearTranscriptBottom(scrollTop: number, scrollHeight: number, clientHeight: number): boolean {
   return scrollHeight - clientHeight - scrollTop <= 40;
 }
+
+export function followsAfterScroll(wasFollowing: boolean, previousTop: number, scrollTop: number, scrollHeight: number, clientHeight: number): boolean {
+  if (isNearTranscriptBottom(scrollTop, scrollHeight, clientHeight)) return true;
+  // Growing/deferred Markdown can increase the gap without a user scroll.
+  // Only moving upward should disengage an existing follow position.
+  return scrollTop < previousTop - 1 ? false : wasFollowing;
+}

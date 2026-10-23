@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { isNearTranscriptBottom, type StreamLine } from "./lib/transcript";
+import { followsAfterScroll, type StreamLine } from "./lib/transcript";
 import { t, type Locale, type MessageKey } from "./lib/i18n";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { CopyButton } from "./CopyButton";
@@ -31,8 +31,25 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
   children?: ReactNode;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const lastScrollTopRef = useRef(0);
   const followingRef = useRef(true);
   const [following, setFollowing] = useState(true);
+
+  const followLatest = () => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    lastScrollTopRef.current = scrollRef.current.scrollTop;
+  };
+
+  useLayoutEffect(() => {
+    const observer = new ResizeObserver(() => {
+      if (followingRef.current) followLatest();
+    });
+    if (contentRef.current) observer.observe(contentRef.current);
+    if (scrollRef.current) observer.observe(scrollRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     followingRef.current = true;
@@ -45,7 +62,7 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
       setFollowing(true);
     }
     if (followingRef.current && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      followLatest();
     }
   }, [lines, children, resetKey]);
 
@@ -59,11 +76,13 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
         tabIndex={0}
         onScroll={(event) => {
           const el = event.currentTarget;
-          followingRef.current = isNearTranscriptBottom(el.scrollTop, el.scrollHeight, el.clientHeight);
+          followingRef.current = followsAfterScroll(followingRef.current, lastScrollTopRef.current, el.scrollTop, el.scrollHeight, el.clientHeight);
+          lastScrollTopRef.current = el.scrollTop;
           setFollowing(followingRef.current);
         }}
-        className="h-[min(55vh,36rem)] min-h-72 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4 space-y-4 [overflow-anchor:none]"
+        className="h-[min(55vh,36rem)] min-h-72 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4 [overflow-anchor:none]"
       >
+        <div ref={contentRef} className="space-y-4">
         {lines.length === 0 && !children ? (
           <p className="text-sm text-slate-500">{t(locale, "session.transcriptEmpty")}</p>
         ) : lines.map((line) => {
@@ -93,12 +112,13 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
           );
         })}
         {children}
+        </div>
       </div>
       {!following && (
         <button type="button" className="absolute bottom-3 right-3 rounded-full border border-sky-700 bg-slate-900 px-3 py-1.5 text-xs text-sky-200 shadow-lg" onClick={() => {
           followingRef.current = true;
           setFollowing(true);
-          if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          followLatest();
         }}>{t(locale, "chat.latest")}</button>
       )}
     </div>

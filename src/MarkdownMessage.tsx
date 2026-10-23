@@ -1,5 +1,5 @@
-import { Children, isValidElement, memo, useDeferredValue, type ReactNode } from "react";
-import Markdown from "react-markdown";
+import { Children, isValidElement, memo, useDeferredValue, useMemo, type ReactNode } from "react";
+import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { CopyButton } from "./CopyButton";
@@ -33,9 +33,7 @@ function CodeBlock({ children, locale }: { children?: ReactNode; locale: Locale 
 
 export const MarkdownMessage = memo(function MarkdownMessage({ text, locale }: { text: string; locale: Locale }) {
   const deferred = useDeferredValue(text);
-  return (
-    <div className="markdown break-words text-sm leading-6">
-      <Markdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={(url) => safeWebUrl(url) ?? ""} components={{
+  const components = useMemo<Components>(() => ({
         pre: ({ children }) => <CodeBlock locale={locale}>{children}</CodeBlock>,
         // Never fetch remote image URLs just because an agent printed one.
         img: ({ alt }) => <span className="text-slate-400">[{t(locale, "chat.image")}{alt ? `: ${alt}` : ""}]</span>,
@@ -46,7 +44,10 @@ export const MarkdownMessage = memo(function MarkdownMessage({ text, locale }: {
             void openUrl(url).catch(() => undefined);
           }}>{children}</a> : <span>{children}</span>;
         },
-      }}>{deferred}</Markdown>
+      }), [locale]);
+  return (
+    <div className="markdown break-words text-sm leading-6">
+      <Markdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={(url) => safeWebUrl(url) ?? ""} components={components}>{deferred}</Markdown>
     </div>
   );
 });

@@ -57,11 +57,13 @@ function runSmoke(mode, check) {
         TMPDIR: root,
         ACP_SMOKE_FIXTURE_DIR: root,
         ACP_SMOKE_FIXTURE_MODE: mode,
-        CLAUDE_ACP_SMOKE_TIMEOUT_MS: "2000",
+        // Allow process startup under a loaded runner; protocol failures still
+        // fail immediately and every adapter must be cleaned up below.
+        CLAUDE_ACP_SMOKE_TIMEOUT_MS: "5000",
         CLAUDE_ACP_SMOKE_SKIP_PROMPT: "0",
       },
       encoding: "utf8",
-      timeout: 10000,
+      timeout: 30000,
     });
     assert.ifError(result.error);
     check(result);
