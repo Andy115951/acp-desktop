@@ -106,6 +106,19 @@ describe("history I/O context races", () => {
     expect(useSessionStore.getState().savedSessionId).toBe("first");
     cleanup();
   });
+  it("does not revive an unavailable entry when an earlier successful save settles", async () => {
+    let finish!: (value: typeof catalog) => void;
+    mocks.save.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("resume");
+    const status = mocks.handlers.get("acp://status")!;
+    status({ payload: { connected: true, busy: false, cwd: "/workspace", sessionId: "second" } });
+    status({ payload: { connected: false, busy: false, cwd: "/workspace", error: "session/load failed: session expired" } });
+    finish(catalog); await flush();
+    expect(useSessionStore.getState().savedSessionId).toBeNull();
+    expect(useSessionStore.getState().catalog.sessions.find((entry) => entry.sessionId === "second")?.unavailable).toBe(true);
+    cleanup();
+  });
   it("restores the folder after initial agent detection changes during hydration", async () => {
     let finish!: (value: typeof catalog) => void;
     mocks.load.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));

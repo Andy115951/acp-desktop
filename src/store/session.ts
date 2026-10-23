@@ -110,6 +110,7 @@ let lineCounter = 0;
 let connectionGeneration = 0;
 let contextGeneration = 0;
 let connectionAgentId: string | null = null;
+let catalogRevision = 0;
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   cwd: null,
@@ -248,6 +249,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // Resume id here so the button cannot retry the same stale session.
       if (isSessionLoadFailedError(raw) && cwd) {
         if (resumeSessionId) {
+          ++catalogRevision;
           set({ catalog: invalidateSession(get().catalog, cwd, resumeSessionId) });
           void markSessionUnavailable(agentId, cwd, resumeSessionId).catch(() => {
             if (generation === connectionGeneration) set({ catalogError: true });
@@ -430,15 +432,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ) {
           const agentId = connectionAgentId ?? currentAgentId();
           const generation = connectionGeneration;
+          const revision = ++catalogRevision;
           if (currentAgentId() === agentId) {
             set({ savedSessionId: sessionId, catalog: rememberSession(get().catalog, cwd, sessionId, Date.now()) });
           }
           void saveKnownSession(agentId, cwd, sessionId).then((catalog) => {
-            if (generation === connectionGeneration && currentAgentId() === agentId && get().cwd === cwd) {
+            if (generation === connectionGeneration && revision === catalogRevision && currentAgentId() === agentId && get().cwd === cwd) {
               set({ catalog, catalogError: false });
             }
           }).catch(() => {
-            if (generation === connectionGeneration && currentAgentId() === agentId) set({ catalogError: true });
+            if (generation === connectionGeneration && revision === catalogRevision && currentAgentId() === agentId) set({ catalogError: true });
           });
         }
 
@@ -454,6 +457,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           const failedId = get().savedSessionId;
           const generation = connectionGeneration;
           if (failedId) {
+            ++catalogRevision;
             set({ catalog: invalidateSession(get().catalog, cwd, failedId) });
             void markSessionUnavailable(agentId, cwd, failedId).catch(() => {
               if (generation === connectionGeneration && currentAgentId() === agentId) set({ catalogError: true });
