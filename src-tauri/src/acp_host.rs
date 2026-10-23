@@ -479,13 +479,13 @@ impl AcpSession {
                                     // ActiveSession so later updates hit the connection handler.
                                     let n = drain_load_replay(&app, restored.into_session()).await;
                                     if n == 0 {
-                                        // Surface a clear UI signal when load succeeded but
-                                        // produced no replay chunks (agent quirk / empty history).
+                                        // Replay can also arrive through the connection-level
+                                        // handler, so an empty drain does not imply no history.
                                         let _ = app.emit(
                                             "acp://stream",
                                             StreamEvent {
                                                 kind: "status".into(),
-                                                text: "Resume: session loaded (no replayed history)"
+                                                text: "Resume: session loaded"
                                                     .into(),
                                             },
                                         );

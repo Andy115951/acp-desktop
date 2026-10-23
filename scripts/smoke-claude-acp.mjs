@@ -347,7 +347,7 @@ async function main() {
     ok(`session/load (fresh process) → same sessionId`);
 
     // Prefer seeing replayed history when we prompted; empty replay is still a
-    // successful load (host shows "Resume: session loaded (no replayed history)").
+    // successful load (host shows "Resume: session loaded").
     if (!SKIP_PROMPT) {
       const replay = agent.updateKinds.filter((k) =>
         /user_message_chunk|agent_message_chunk|userMessageChunk|agentMessageChunk/i.test(
