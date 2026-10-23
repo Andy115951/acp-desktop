@@ -298,6 +298,12 @@ pub fn lookup_backend(agent_id: &str) -> Result<&'static dyn AgentBackend, Strin
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentDetailCode {
+    NpxFallback,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInfo {
     pub id: String,
@@ -309,6 +315,9 @@ pub struct AgentInfo {
     /// Optional Agents-list note (e.g. Codex npx fallback when only `codex` is present).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// Stable code for app-owned notes that the UI can localize.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail_code: Option<AgentDetailCode>,
 }
 
 pub fn detect_builtin_agents() -> Vec<AgentInfo> {
@@ -337,6 +346,7 @@ pub fn detect_builtin_agents() -> Vec<AgentInfo> {
                 binary: entry.binary.to_string(),
                 available,
                 connectable: entry.backend.is_some(),
+                detail_code: detail.as_ref().map(|_| AgentDetailCode::NpxFallback),
                 detail,
             }
         })

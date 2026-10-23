@@ -9,7 +9,7 @@ import {
   canSendPrompt,
   draftEnterShouldSend,
 } from "./lib/sessionUiGates";
-import { agentAuthHint } from "./lib/agentHints";
+import { agentAuthHint, agentDetailHint } from "./lib/agentHints";
 import { shouldDisconnectOnAgentSwitch } from "./lib/agentSwitch";
 import { t, type Locale } from "./lib/i18n";
 import { useAgentsStore } from "./store/agents";
@@ -222,6 +222,7 @@ export default function App() {
         ) : null}
         <ul className="divide-y divide-slate-800">
           {agents.map((agent) => {
+            const detail = agentDetailHint(agent, locale);
             const available = agent.available;
             const selectedRow = agent.id === selectedAgentId;
             const clickable = agent.connectable;
@@ -262,9 +263,9 @@ export default function App() {
                     <p className="pl-4 text-xs text-slate-500">
                       <code>{agent.binary}</code>
                     </p>
-                    {agent.detail ? (
+                    {detail ? (
                       <p className="pl-4 pt-0.5 text-xs text-amber-200/80">
-                        {agent.detail}
+                        {detail}
                       </p>
                     ) : null}
                   </div>

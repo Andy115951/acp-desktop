@@ -16,6 +16,7 @@ export type AgentInfo = {
   connectable: boolean;
   /** Optional host note (e.g. Codex npx fallback when only `codex` is on PATH). */
   detail?: string | null;
+  detailCode?: "npx_fallback" | null;
 };
 
 export type AgentOverride = {

@@ -1,9 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
   agentAuthHint,
+  agentDetailHint,
   agentCodexNpxFallbackHint,
   agentNpxFallbackHint,
 } from "./agentHints";
+
+describe("agentDetailHint", () => {
+  it.each([
+    ["codex", "codex-acp"],
+    ["claude", "claude-agent-acp"],
+  ])("localizes the %s fallback note while preserving install commands", (id, adapter) => {
+    const agent = { id, detailCode: "npx_fallback" as const, detail: "host note" };
+    const english = agentDetailHint(agent, "en")!;
+    const chinese = agentDetailHint(agent, "zh-CN")!;
+    expect(english).toContain("Connect spawns via npx");
+    expect(chinese).toContain("连接时通过 npx 启动");
+    for (const hint of [english, chinese]) {
+      expect(hint).toContain(`@agentclientprotocol/${adapter}`);
+      expect(hint).toContain(`\`${adapter}\``);
+      expect(hint).not.toMatch(/\{(?:cli|adapter)\}/);
+    }
+  });
+
+  it("preserves uncategorized diagnostics instead of translating vendor text", () => {
+    expect(agentDetailHint({ id: "codex", detail: "Vendor diagnostic: npx" }, "zh-CN"))
+      .toBe("Vendor diagnostic: npx");
+    expect(agentDetailHint({ id: "other", detailCode: "npx_fallback", detail: "Unknown adapter" }, "zh-CN"))
+      .toBe("Unknown adapter");
+    expect(agentDetailHint({ id: "grok" }, "zh-CN")).toBeNull();
+  });
+});
 
 describe("agentAuthHint", () => {
   it("returns Codex auth/install note", () => {
