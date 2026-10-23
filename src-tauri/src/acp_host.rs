@@ -329,8 +329,10 @@ impl AcpSession {
                         .on_receive_notification(
                             {
                                 let app = app_for_notif.clone();
+                                let agent_id = agent_id_for_task.clone();
+                                let cwd = cwd_for_task.display().to_string();
                                 async move |notification: SessionNotification, _cx| {
-                                    emit_session_update(&app, &notification.update);
+                                    emit_session_update(&app, &notification, &agent_id, &cwd);
                                     Ok(())
                                 }
                             },
@@ -518,7 +520,7 @@ impl AcpSession {
                                     let loaded_sid = restored.session().session_id().clone();
                                     // Drain replayed session/update into the chat UI, then drop
                                     // ActiveSession so later updates hit the connection handler.
-                                    let n = drain_load_replay(&app, restored.into_session()).await;
+                                    let n = drain_load_replay(&app, restored.into_session(), &agent_id_for_prompt, &cwd.display().to_string()).await;
                                     if n == 0 {
                                         // Replay can also arrive through the connection-level
                                         // handler, so an empty drain does not imply no history.
@@ -860,8 +862,11 @@ fn stream_event_for_session_update(update: &SessionUpdate) -> Option<StreamEvent
     Some(StreamEvent { kind, text, tool })
 }
 
-fn emit_session_update(app: &AppHandle, update: &SessionUpdate) {
-    if let Some(event) = stream_event_for_session_update(update) {
+fn emit_session_update(app: &AppHandle, notification: &SessionNotification, agent_id: &str, cwd: &str) {
+    if let Some(event) = crate::session_metadata::metadata_event(agent_id, cwd, notification) {
+        let _ = app.emit("acp://metadata", event);
+    }
+    if let Some(event) = stream_event_for_session_update(&notification.update) {
         let _ = app.emit("acp://stream", event);
     }
 }
@@ -881,6 +886,8 @@ fn emit_session_update(app: &AppHandle, update: &SessionUpdate) {
 async fn drain_load_replay(
     app: &AppHandle,
     mut session: agent_client_protocol::ActiveSession<'static, Agent>,
+    agent_id: &str,
+    cwd: &str,
 ) -> usize {
     // Generous first-chunk budget: notification is queued before the load
     // response, but stdio + spawn scheduling can still lag briefly after
@@ -912,7 +919,7 @@ async fn drain_load_replay(
                 let hit_flag = hit.clone();
                 let result = MatchDispatch::new(dispatch)
                     .if_notification(async move |notif: SessionNotification| {
-                        emit_session_update(&app, &notif.update);
+                        emit_session_update(&app, &notif, agent_id, cwd);
                         hit_flag.store(true, std::sync::atomic::Ordering::SeqCst);
                         Ok(())
                     })

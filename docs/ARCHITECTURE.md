@@ -53,6 +53,8 @@ Built-in agent table + optional user overrides (`ACP_DESKTOP_AGENT_CMD` / `ACP_D
 5. If the agent requests permission, host pauses that tool path, shows a card, then replies allow/deny on the ACP channel.
 6. Turn ends when the prompt response returns a stop reason (or the user cancels).
 
+Metadata notifications for available commands and context usage use `acp://metadata` with agent/workspace/session identity, including notifications drained during Resume. Only explicit presentation fields cross the bridge; `_meta` and raw cost objects do not. Reports are volatile, stay outside the transcript and are cleared on disconnect/reconnect. Command insertion requires an advertised command and an idle connection; it never sends a prompt automatically.
+
 Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; they must not be parsed as protocol.
 
 ## Sessions and storage

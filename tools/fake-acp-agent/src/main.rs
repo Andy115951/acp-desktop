@@ -18,6 +18,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_client_protocol::schema::v1::{
+    AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, UnstructuredCommandInput, UsageUpdate,
     AgentCapabilities, CancelNotification, ContentBlock, ContentChunk, Diff, InitializeRequest,
     InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
     NewSessionResponse, PermissionOption, PermissionOptionKind, PromptRequest, PromptResponse,
@@ -77,6 +78,17 @@ fn is_known_fake_session(id: &str) -> bool {
     !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
 }
 
+fn send_session_info(connection: &ConnectionTo<Client>, session_id: SessionId) -> agent_client_protocol::Result<()> {
+    if !std::env::args().any(|arg| arg == "--session-info") { return Ok(()); }
+    connection.send_notification(SessionNotification::new(session_id.clone(), SessionUpdate::AvailableCommandsUpdate(
+        AvailableCommandsUpdate::new(vec![
+            AvailableCommand::new("review", "Review selected files").input(AvailableCommandInput::Unstructured(UnstructuredCommandInput::new("Files to review"))),
+            AvailableCommand::new("compact", "Compact context"),
+        ]))))?;
+    connection.send_notification(SessionNotification::new(session_id, SessionUpdate::UsageUpdate(UsageUpdate::new(2048, 8192))))?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> agent_client_protocol::Result<()> {
     // ACP owns stdout for JSON-RPC; keep diagnostics on stderr.
@@ -120,13 +132,14 @@ async fn main() -> agent_client_protocol::Result<()> {
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
-            async move |_req: NewSessionRequest, responder, _connection| {
+            async move |_req: NewSessionRequest, responder, connection: ConnectionTo<Client>| {
                 let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
                 let session_id = if std::env::args().any(|arg| arg == "--stale-session") {
                     "fake-stale-session".to_string()
                 } else {
                     format!("fake-session-{id}")
                 };
+                send_session_info(&connection, SessionId::new(session_id.clone()))?;
                 responder.respond(NewSessionResponse::new(SessionId::new(session_id)))
             },
             agent_client_protocol::on_receive_request!(),
@@ -144,6 +157,7 @@ async fn main() -> agent_client_protocol::Result<()> {
                 // wire ahead of the JSON-RPC result. Respond from a spawn after
                 // yield so we do not await block_task inside the request handler.
                 let session_id = req.session_id.clone();
+                send_session_info(&connection, session_id.clone())?;
                 connection.send_notification(SessionNotification::new(
                     session_id,
                     SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
@@ -171,6 +185,11 @@ async fn main() -> agent_client_protocol::Result<()> {
                     Some(ContentBlock::Text(text)) => text.text.clone(),
                     _ => String::new(),
                 };
+                if scenario == "fake:clear-session-info" {
+                    connection.send_notification(SessionNotification::new(req.session_id.clone(), SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![]))))?;
+                    connection.send_notification(SessionNotification::new(req.session_id.clone(), SessionUpdate::UsageUpdate(UsageUpdate::new(4096, 8192))))?;
+                    return responder.respond(PromptResponse::new(StopReason::EndTurn));
+                }
                 if scenario == "fake:usage-limit" {
                     return responder.respond_with_error(
                         Error::internal_error().data("usageLimitExceeded: fixture limit reached"),
