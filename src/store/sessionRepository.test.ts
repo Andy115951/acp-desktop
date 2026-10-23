@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const prefs = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), save: vi.fn() }));
 vi.mock("@tauri-apps/plugin-store", () => ({ Store: { load: vi.fn(async () => prefs) } }));
-import { loadSessionCatalog, markSessionUnavailable, saveKnownSession } from "./sessionRepository";
+import { editKnownSession, loadSessionCatalog, loadWorkspaceHistory, markSessionUnavailable, saveKnownSession, saveWorkspaceVisit } from "./sessionRepository";
 
 let data: Map<string, unknown>;
 beforeEach(() => {
@@ -9,6 +9,36 @@ beforeEach(() => {
   prefs.get.mockImplementation(async (key) => structuredClone(data.get(key)));
   prefs.set.mockImplementation(async (key, value) => { data.set(key, structuredClone(value)); });
   prefs.save.mockReset().mockResolvedValue(undefined);
+});
+
+describe("workspace visits and explicit metadata edits", () => {
+  it("serializes visits without losing either workspace or the legacy folder", async () => {
+    data.set("lastCwd", "/legacy");
+    await Promise.all([saveWorkspaceVisit("/first"), saveWorkspaceVisit("/second")]);
+    expect((await loadWorkspaceHistory()).workspaces.map((entry) => entry.cwd)).toEqual(["/second", "/first", "/legacy"]);
+    expect(data.get("lastCwd")).toBe("/second");
+  });
+  it("retains names and archive state after subsequent successful session statuses", async () => {
+    await saveKnownSession("codex", "/one", "one");
+    await editKnownSession("codex", "/one", "one", { title: "Named session" });
+    await editKnownSession("codex", "/one", "one", { archivedAt: 4 });
+    await saveKnownSession("codex", "/one", "one");
+    expect((await loadSessionCatalog("codex")).sessions[0]).toMatchObject({ title: "Named session", archivedAt: 4 });
+  });
+  it("rolls back an explicit archive in the shared store if disk save fails", async () => {
+    await saveKnownSession("codex", "/one", "one");
+    prefs.save.mockRejectedValueOnce(new Error("disk full"));
+    await expect(editKnownSession("codex", "/one", "one", { archivedAt: 5 })).rejects.toThrow();
+    expect((await loadSessionCatalog("codex")).sessions[0].archivedAt).toBeUndefined();
+  });
+  it("rolls back both workspace keys if a visit cannot be saved", async () => {
+    await saveWorkspaceVisit("/first");
+    const previous = structuredClone(data.get("recentWorkspaces.v1"));
+    prefs.save.mockRejectedValueOnce(new Error("disk full"));
+    await expect(saveWorkspaceVisit("/second")).rejects.toThrow();
+    expect(data.get("lastCwd")).toBe("/first");
+    expect(data.get("recentWorkspaces.v1")).toEqual(previous);
+  });
 });
 
 describe("serialized session persistence", () => {

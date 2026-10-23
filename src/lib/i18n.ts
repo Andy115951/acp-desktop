@@ -35,6 +35,20 @@ export type MessageKey =
   | "dev.binaryMissing"
   | "session.fakeTitle"
   | "session.agentTitle"
+  | "workspace.recent"
+  | "workspace.empty"
+  | "workspace.choose"
+  | "workspace.failed"
+  | "history.rename"
+  | "history.archive"
+  | "history.archiveHelp"
+  | "history.title"
+  | "history.save"
+  | "history.cancel"
+  | "history.archived"
+  | "history.restore"
+  | "history.restoreNamed"
+  | "history.unavailable"
   | "history.label"
   | "history.choose"
   | "history.empty"
@@ -202,6 +216,20 @@ const en: Dictionary = {
   "dev.binaryMissing": "binary missing (cargo build -p fake-acp-agent)",
   "session.fakeTitle": "Fake agent session",
   "session.agentTitle": "{name} session",
+  "workspace.recent": "Recent workspaces",
+  "workspace.empty": "No recent workspaces",
+  "workspace.choose": "Choose a workspace",
+  "workspace.failed": "Workspace shortcuts could not be loaded or saved. Pick a folder to continue; check local storage before relaunching.",
+  "history.rename": "Rename",
+  "history.archive": "Archive app entry",
+  "history.archiveHelp": "Archiving hides this app entry. Your agent’s conversation history stays intact, and you can restore the entry here.",
+  "history.title": "Session title",
+  "history.save": "Save title",
+  "history.cancel": "Cancel rename",
+  "history.archived": "Archived sessions ({count})",
+  "history.restore": "Restore",
+  "history.restoreNamed": "Restore {name}",
+  "history.unavailable": "Unavailable",
   "history.label": "Saved sessions",
   "history.choose": "Choose a session",
   "history.empty": "No saved sessions for this workspace",
@@ -324,6 +352,20 @@ const zhCN: Dictionary = {
   "dev.binaryMissing": "二进制缺失（cargo build -p fake-acp-agent）",
   "session.fakeTitle": "假 agent 会话",
   "session.agentTitle": "{name} 会话",
+  "workspace.recent": "最近工作区",
+  "workspace.empty": "暂无最近工作区",
+  "workspace.choose": "选择工作区",
+  "workspace.failed": "无法读取或保存工作区快捷记录。可选择文件夹继续；重新启动前请检查本地存储。",
+  "history.rename": "重命名",
+  "history.archive": "归档应用记录",
+  "history.archiveHelp": "归档仅隐藏本应用中的记录，智能体的对话历史会保留，可在此恢复记录。",
+  "history.title": "会话标题",
+  "history.save": "保存标题",
+  "history.cancel": "取消重命名",
+  "history.archived": "已归档会话（{count}）",
+  "history.restore": "恢复记录",
+  "history.restoreNamed": "恢复记录 {name}",
+  "history.unavailable": "不可用",
   "history.label": "已保存的会话",
   "history.choose": "选择会话",
   "history.empty": "此工作区暂无保存的会话",
