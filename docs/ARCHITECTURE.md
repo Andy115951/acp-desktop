@@ -58,8 +58,10 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 ## Sessions and storage
 
 - Conversation / skill / auth state: **vendor directories** (e.g. `~/.grok`, Codex home), same as the TUI.
-- App preferences only: last workspace folder, selected agent id, UI locale (`ui.locale`), per-agent `cwd→sessionId` maps (`{agentId}.sessionByCwd`) — via `tauri-plugin-store`.
-- No unified cross-vendor session DB. Switching agents disconnects, clears the transcript, and reloads that vendor's Resume id.
+- App preferences only: last workspace folder, selected agent id, UI locale (`ui.locale`), and per-agent session catalogs (`{agentId}.sessions.v1`) — via `tauri-plugin-store`. Catalog entries contain cwd, session ID, optional title, creation/last-used timestamps, and unavailable status. No messages, tool results or credentials are copied into them.
+- Each catalog imports the legacy `{agentId}.sessionByCwd` map once, retaining all valid workspace IDs. The legacy key is left intact; an existing catalog is authoritative so stale IDs are not imported again. Unknown schema versions are not overwritten. Metadata I/O is serialized to prevent concurrent status updates from losing sessions.
+- No unified cross-vendor transcript DB. Switching agents disconnects, clears the transcript/draft, and reloads that vendor's catalog. The Saved sessions picker filters app-known entries by the selected agent and workspace; Resume asks the vendor to replay the selected conversation. New session preserves earlier entries. A failed Resume marks only that entry unavailable.
+- Workspace and saved-session selection require a disconnected, idle session with no pending permission. Both the UI and store enforce this rule. Delayed metadata results cannot overwrite a newer selection, and status persistence uses the connection's agent identity rather than a possibly changed UI selection.
 - Launch hydrate runs **after** agent detect so `selectedAgentId` is known; if detect still flips mid-read, Resume is reloaded for the agent selected at commit time (never cross-vendor).
 
 ## Defaults (scaffold)

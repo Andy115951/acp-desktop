@@ -35,6 +35,12 @@ export type MessageKey =
   | "dev.binaryMissing"
   | "session.fakeTitle"
   | "session.agentTitle"
+  | "history.label"
+  | "history.choose"
+  | "history.empty"
+  | "history.appKnown"
+  | "history.disconnect"
+  | "history.failed"
   | "session.pickFolder"
   | "session.resume"
   | "session.newSession"
@@ -196,6 +202,12 @@ const en: Dictionary = {
   "dev.binaryMissing": "binary missing (cargo build -p fake-acp-agent)",
   "session.fakeTitle": "Fake agent session",
   "session.agentTitle": "{name} session",
+  "history.label": "Saved sessions",
+  "history.choose": "Choose a session",
+  "history.empty": "No saved sessions for this workspace",
+  "history.appKnown": "Sessions known to this app for the selected agent and workspace. Conversation history is restored by the agent when you Resume.",
+  "history.disconnect": "Disconnect before changing the workspace or saved session.",
+  "history.failed": "Session metadata could not be loaded or saved. Your agent’s conversation history is unchanged; check local storage and try again.",
   "session.pickFolder": "Pick folder",
   "session.resume": "Resume",
   "session.newSession": "New session",
@@ -312,6 +324,12 @@ const zhCN: Dictionary = {
   "dev.binaryMissing": "二进制缺失（cargo build -p fake-acp-agent）",
   "session.fakeTitle": "假 agent 会话",
   "session.agentTitle": "{name} 会话",
+  "history.label": "已保存的会话",
+  "history.choose": "选择会话",
+  "history.empty": "此工作区暂无保存的会话",
+  "history.appKnown": "仅列出本应用已知的当前智能体、当前工作区会话；恢复时由智能体加载对话历史。",
+  "history.disconnect": "更换工作区或已保存的会话前，请先断开连接。",
+  "history.failed": "无法读取或保存会话元数据。智能体的对话历史未改变；请检查本地存储后重试。",
   "session.pickFolder": "选择文件夹",
   "session.resume": "恢复",
   "session.newSession": "新会话",

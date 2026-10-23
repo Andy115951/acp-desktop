@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { PermissionCard } from "./PermissionCard";
 import { ErrorNotice } from "./ErrorNotice";
 import { ChatTranscript } from "./ChatTranscript";
+import { SessionHistory } from "./SessionHistory";
 import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
@@ -31,6 +32,10 @@ export default function App() {
   } = useAgentsStore();
   const {
     cwd,
+    catalog,
+    catalogError,
+    switching,
+    selectSavedSession,
     connected,
     busy,
     error,
@@ -134,7 +139,7 @@ export default function App() {
   const uiGates = {
     cwd,
     connected,
-    busy,
+    busy: busy || switching,
     permissionOpen: !!permission,
     draftTrimmed: !!draft.trim(),
     savedSessionId,
@@ -187,7 +192,7 @@ export default function App() {
               {t(locale, "agents.switch")}
               <select
                 value={selectedAgentId}
-                disabled={busy}
+                disabled={busy || switching}
                 onChange={(e) => selectAgent(e.target.value)}
                 className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
               >
@@ -231,7 +236,7 @@ export default function App() {
               <li key={agent.id}>
                 <button
                   type="button"
-                  disabled={!clickable}
+                  disabled={!clickable || switching}
                   onClick={() => selectAgent(agent.id)}
                   className={`flex w-full items-center justify-between gap-3 py-2.5 text-left ${
                     available ? "text-slate-100" : "text-slate-500"
@@ -301,7 +306,8 @@ export default function App() {
           <button
             type="button"
             onClick={() => void pickFolder()}
-            className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500"
+            disabled={connected || busy || !!permission || switching}
+            className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500 disabled:opacity-50"
           >
             {t(locale, "session.pickFolder")}
           </button>
@@ -363,6 +369,9 @@ export default function App() {
             {t(locale, "session.clear")}
           </button>
         </div>
+        <SessionHistory catalog={catalog} cwd={cwd} savedSessionId={savedSessionId}
+          disabled={connected || busy || !!permission || switching} failed={catalogError}
+          locale={locale} onSelect={selectSavedSession} />
         <p className="text-xs text-slate-500 break-all">
           {t(locale, "session.cwd")}: {cwd ?? "—"}{" "}
           {sessionId
