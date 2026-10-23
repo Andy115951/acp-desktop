@@ -1,9 +1,11 @@
 //! Minimal ACP v1 stdio agent for permission allow/deny + Resume smoke tests.
 //!
-//! On every `session/prompt` it sends `session/request_permission` with
+//! On ordinary `session/prompt` it sends `session/request_permission` with
 //! allow/reject options. Only after an allow selection does it stream agent
 //! text and finish with `EndTurn`. Reject (or cancel) ends the turn without
 //! streaming the "allowed" side-effect message.
+//! Reserved `fake:*` prompts exercise quota errors, explicit refusal reports,
+//! and simultaneous permission requests without running actual tools.
 //!
 //! Advertises `agentCapabilities.loadSession` and implements `session/load`:
 //! accepts ids shaped like `fake-session-N` (including across process restarts
@@ -37,6 +39,33 @@ fn is_allow(outcome: &RequestPermissionOutcome) -> bool {
     }
 }
 
+fn permission_label(outcome: &RequestPermissionOutcome) -> &'static str {
+    if is_allow(outcome) {
+        "allowed"
+    } else if matches!(outcome, RequestPermissionOutcome::Cancelled) {
+        "cancelled"
+    } else {
+        "rejected"
+    }
+}
+
+fn permission_request(session_id: SessionId, id: &str, title: &str) -> RequestPermissionRequest {
+    RequestPermissionRequest::new(
+        session_id,
+        ToolCallUpdate::new(
+            id.to_owned(),
+            ToolCallUpdateFields::new()
+                .title(title)
+                .kind(ToolKind::Execute)
+                .status(ToolCallStatus::Pending),
+        ),
+        vec![
+            PermissionOption::new("allow", "Allow once", PermissionOptionKind::AllowOnce),
+            PermissionOption::new("reject", "Reject once", PermissionOptionKind::RejectOnce),
+        ],
+    )
+}
+
 /// Fake sessions are `fake-session-<digits>`. Pattern (not in-memory set) so a
 /// fresh agent process can still honor Resume after Disconnect.
 fn is_known_fake_session(id: &str) -> bool {
@@ -66,9 +95,12 @@ async fn main() -> agent_client_protocol::Result<()> {
         .on_receive_request(
             async move |_req: NewSessionRequest, responder, _connection| {
                 let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
-                responder.respond(NewSessionResponse::new(SessionId::new(format!(
-                    "fake-session-{id}"
-                ))))
+                let session_id = if std::env::args().any(|arg| arg == "--stale-session") {
+                    "fake-stale-session".to_string()
+                } else {
+                    format!("fake-session-{id}")
+                };
+                responder.respond(NewSessionResponse::new(SessionId::new(session_id)))
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -87,9 +119,9 @@ async fn main() -> agent_client_protocol::Result<()> {
                 let session_id = req.session_id.clone();
                 connection.send_notification(SessionNotification::new(
                     session_id,
-                    SessionUpdate::AgentMessageChunk(ContentChunk::new(
-                        ContentBlock::Text(TextContent::new(RESUME_REPLAY)),
-                    )),
+                    SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+                        TextContent::new(RESUME_REPLAY),
+                    ))),
                 ))?;
                 connection.spawn(async move {
                     tokio::task::yield_now().await;
@@ -106,10 +138,46 @@ async fn main() -> agent_client_protocol::Result<()> {
         )
         .on_receive_request(
             async move |req: PromptRequest, responder, connection: ConnectionTo<Client>| {
+                let scenario = match req.prompt.first() {
+                    Some(ContentBlock::Text(text)) => text.text.clone(),
+                    _ => String::new(),
+                };
+                if scenario == "fake:usage-limit" {
+                    return responder.respond_with_error(
+                        Error::internal_error().data("usageLimitExceeded: fixture limit reached"),
+                    );
+                }
                 let session_id = req.session_id.clone();
                 connection.spawn({
                     let connection = connection.clone();
                     async move {
+                        if scenario == "fake:parallel" {
+                            let first = connection.send_request(permission_request(
+                                session_id.clone(),
+                                "fake-parallel-1",
+                                "First parallel action (smoke)",
+                            ));
+                            let second = connection.send_request(permission_request(
+                                session_id.clone(),
+                                "fake-parallel-2",
+                                "Second parallel action (smoke)",
+                            ));
+                            let (first, second) =
+                                tokio::join!(first.block_task(), second.block_task());
+                            let report = format!(
+                                "fake-agent: first={} second={}",
+                                permission_label(&first?.outcome),
+                                permission_label(&second?.outcome)
+                            );
+                            connection.send_notification(SessionNotification::new(
+                                session_id,
+                                SessionUpdate::AgentMessageChunk(ContentChunk::new(
+                                    ContentBlock::Text(TextContent::new(report)),
+                                )),
+                            ))?;
+                            responder.respond(PromptResponse::new(StopReason::EndTurn))?;
+                            return Ok(());
+                        }
                         let tool_call = ToolCallUpdate::new(
                             "fake-tool-1",
                             ToolCallUpdateFields::new()
@@ -143,6 +211,16 @@ async fn main() -> agent_client_protocol::Result<()> {
                                 session_id,
                                 SessionUpdate::AgentMessageChunk(ContentChunk::new(
                                     ContentBlock::Text(TextContent::new("fake-agent: allowed")),
+                                )),
+                            ))?;
+                        } else if scenario == "fake:deny-report" {
+                            connection.send_notification(SessionNotification::new(
+                                session_id,
+                                SessionUpdate::AgentMessageChunk(ContentChunk::new(
+                                    ContentBlock::Text(TextContent::new(format!(
+                                        "fake-agent: tool {} by user",
+                                        permission_label(&perm.outcome),
+                                    ))),
                                 )),
                             ))?;
                         }

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { PermissionCard } from "./PermissionCard";
+import { ErrorNotice } from "./ErrorNotice";
 import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
@@ -213,7 +214,7 @@ export default function App() {
           </div>
         </div>
         {detectError ? (
-          <p className="mb-2 text-sm text-red-300">{detectError}</p>
+          <ErrorNotice error={detectError} locale={locale} />
         ) : null}
         {authHint ? (
           <p className="mb-3 rounded-md border border-sky-900/50 bg-sky-950/30 px-3 py-2 text-xs text-sky-200/90">
@@ -425,9 +426,7 @@ export default function App() {
           </p>
         ) : null}
         {error ? (
-          <p className="rounded-md border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-300">
-            {error}
-          </p>
+          <ErrorNotice error={error} locale={locale} />
         ) : null}
 
         <div className="h-64 overflow-y-auto rounded-lg border border-slate-800 bg-black/30 p-3 text-sm space-y-2">

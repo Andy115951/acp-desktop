@@ -131,6 +131,12 @@ GitHub Actions (`.github/workflows/ci.yml`) runs the same `cargo test` + `tsc` +
 
 In the app, use the **Dev: fake ACP agent** toggle (same process-env override; not persisted). Then: Pick folder → Connect → Send any prompt → inline permission card Allow/Reject (keys: **a**/**Enter** Allow, **r** Reject, **Esc** Cancel; toolbar Cancel also clears a pending Ask) → Disconnect → **Resume** (expect `fake-agent: resumed` replay; prompt still asks permission).
 
+Acceptance fixtures in the fake agent: send `fake:usage-limit` for a quota error,
+`fake:deny-report` for an explicit refusal message, or `fake:parallel` for two
+permission requests issued before either decision. Starting the fake binary with
+`--stale-session` creates a session that is deliberately unavailable on Resume.
+These fixtures do not call a vendor API or perform the proposed tool actions.
+
 Env alternatives:
 
 ```bash
@@ -154,6 +160,9 @@ npm run tauri:build:macos
 Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & notarization stay optional (set `APPLE_SIGNING_IDENTITY` when you have a Developer ID cert). Details: [docs/PACKAGING.md](docs/PACKAGING.md).
 
 ## Roadmap
+
+Upcoming M9–M12 plans and acceptance evidence live in the
+[GitHub Project](https://github.com/users/Andy115951/projects/2).
 
 1. **Tauri skeleton + Grok detect** — done (M1 / [#2](https://github.com/Andy115951/acp-desktop/issues/2))
 2. **Grok ACP path** — done (M2 / [#3](https://github.com/Andy115951/acp-desktop/issues/3), [#8](https://github.com/Andy115951/acp-desktop/pull/8) + [#9](https://github.com/Andy115951/acp-desktop/pull/9))
