@@ -1,0 +1,54 @@
+import { Store } from "@tauri-apps/plugin-store";
+import { sessionPrefsKey } from "../lib/sessionPrefs";
+import { invalidateSession, readSessionCatalog, rememberSession, sessionCatalogKey, type SessionCatalog } from "../lib/sessionCatalog";
+
+let storePromise: Promise<Store> | undefined;
+let queue: Promise<unknown> = Promise.resolve();
+
+/** Serialize read/modify/write, including migration, so rapid statuses cannot lose entries. */
+function serialized<T>(run: () => Promise<T>): Promise<T> {
+  const next = queue.then(run);
+  queue = next.catch(() => undefined);
+  return next;
+}
+
+async function store(): Promise<Store> {
+  storePromise ??= Store.load("prefs.json").catch((error) => { storePromise = undefined; throw error; });
+  return storePromise;
+}
+
+async function read(agentId: string): Promise<{ prefs: Store; catalog: SessionCatalog }> {
+  const prefs = await store();
+  const key = sessionCatalogKey(agentId);
+  const value = await prefs.get<unknown>(key);
+  const catalog = readSessionCatalog(value, value == null ? await prefs.get<unknown>(sessionPrefsKey(agentId)) : undefined);
+  if (value == null) {
+    await prefs.set(key, catalog);
+    await prefs.save();
+  }
+  return { prefs, catalog };
+}
+
+export function loadSessionCatalog(agentId: string): Promise<SessionCatalog> {
+  return serialized(async () => (await read(agentId)).catalog);
+}
+
+export function saveKnownSession(agentId: string, cwd: string, sessionId: string): Promise<SessionCatalog> {
+  return serialized(async () => {
+    const { prefs, catalog } = await read(agentId);
+    const next = rememberSession(catalog, cwd, sessionId, Date.now());
+    await prefs.set(sessionCatalogKey(agentId), next);
+    await prefs.save();
+    return next;
+  });
+}
+
+export function markSessionUnavailable(agentId: string, cwd: string, sessionId: string): Promise<SessionCatalog> {
+  return serialized(async () => {
+    const { prefs, catalog } = await read(agentId);
+    const next = invalidateSession(catalog, cwd, sessionId);
+    await prefs.set(sessionCatalogKey(agentId), next);
+    await prefs.save();
+    return next;
+  });
+}

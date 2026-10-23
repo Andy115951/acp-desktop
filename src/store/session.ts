@@ -14,20 +14,25 @@ import {
   isPlausibleCwd,
   isSessionLoadFailedError,
   recoverableSessionLoadMessage,
-  removeSessionByCwd,
-  sessionPrefsKey,
   shouldPersistConnectedSessionId,
-  upsertSessionByCwd,
-  type SessionByCwd,
 } from "../lib/sessionPrefs";
 import { sessionPatchAfterClear } from "../lib/sessionUiGates";
 import { appendStreamLine, sealTranscript, recordToolDecision, type StreamLine, type ToolData } from "../lib/transcript";
 
-import {
-  resumeIdAfterAgentMayHaveFlipped,
-  resumeIdForAgent,
-  sessionPatchAfterAgentSwitch,
-} from "../lib/agentSwitch";
+import { sessionPatchAfterAgentSwitch } from "../lib/agentSwitch";
+import { invalidateSession, rememberSession, sessionsForWorkspace, type SessionCatalog } from "../lib/sessionCatalog";
+import { loadSessionCatalog, markSessionUnavailable, saveKnownSession } from "./sessionRepository";
+
+const emptyCatalog = (): SessionCatalog => ({ version: 1, sessions: [] });
+
+async function loadCatalogContext(agentId: string, cwd: string | null) {
+  try {
+    const catalog = await loadSessionCatalog(agentId);
+    return { catalog, catalogError: false, savedSessionId: cwd ? sessionsForWorkspace(catalog, cwd)[0]?.sessionId ?? null : null };
+  } catch {
+    return { catalog: emptyCatalog(), catalogError: true, savedSessionId: null };
+  }
+}
 
 export type PermissionRequest = {
   requestId: number;
@@ -46,50 +51,6 @@ async function getPrefsStore(): Promise<Store> {
     prefsStore = await Store.load(PREFS_FILE);
   }
   return prefsStore;
-}
-
-async function loadSavedSessionId(
-  agentId: string,
-  cwd: string,
-): Promise<string | null> {
-  try {
-    const store = await getPrefsStore();
-    const key = sessionPrefsKey(agentId);
-    const map = (await store.get<SessionByCwd>(key)) ?? {};
-    return resumeIdForAgent(agentId, cwd, (k) => (k === key ? map : {}));
-  } catch {
-    return null;
-  }
-}
-
-async function saveSessionPrefs(
-  agentId: string,
-  cwd: string,
-  sessionId: string,
-): Promise<void> {
-  try {
-    const store = await getPrefsStore();
-    const key = sessionPrefsKey(agentId);
-    const map = (await store.get<SessionByCwd>(key)) ?? {};
-    await store.set(key, upsertSessionByCwd(map, cwd, sessionId));
-    await store.save();
-  } catch {
-    // Prefs are best-effort; never block the session on store failure.
-  }
-}
-
-async function clearSavedSessionId(agentId: string, cwd: string): Promise<void> {
-  try {
-    const store = await getPrefsStore();
-    const key = sessionPrefsKey(agentId);
-    const map = (await store.get<SessionByCwd>(key)) ?? {};
-    const next = removeSessionByCwd(map, cwd);
-    if (next === map) return;
-    await store.set(key, next);
-    await store.save();
-  } catch {
-    // Prefs are best-effort.
-  }
 }
 
 /** Current UI-selected agent (fallback grok). */
@@ -119,6 +80,10 @@ async function loadLastCwd(): Promise<string | null> {
 
 type SessionState = {
   cwd: string | null;
+  catalog: SessionCatalog;
+  catalogError: boolean;
+  switching: boolean;
+  selectSavedSession: (sessionId: string) => void;
   connected: boolean;
   busy: boolean;
   error: string | null;
@@ -143,9 +108,21 @@ type SessionState = {
 
 let lineCounter = 0;
 let connectionGeneration = 0;
+let contextGeneration = 0;
+let connectionAgentId: string | null = null;
+let catalogRevision = 0;
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   cwd: null,
+  catalog: emptyCatalog(),
+  catalogError: false,
+  switching: false,
+  selectSavedSession: (sessionId) => {
+    const state = get();
+    if (state.connected || state.busy || state.permission || state.switching || !state.cwd) return;
+    if (!sessionsForWorkspace(state.catalog, state.cwd).some((entry) => entry.sessionId === sessionId)) return;
+    set({ savedSessionId: sessionId, sessionId: null, lines: [], error: null, permission: null, draft: "" });
+  },
   connected: false,
   busy: false,
   error: null,
@@ -158,68 +135,53 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setDraft: (v) => set({ draft: v }),
   clearTranscript: () => set(sessionPatchAfterClear()),
   pickFolder: async () => {
-    const selected = await open({ directory: true, multiple: false });
-    if (typeof selected === "string") {
-      const savedSessionId = await loadSavedSessionId(
-        currentAgentId(),
-        selected,
-      );
-      set({
-        cwd: selected,
-        error: null,
-        savedSessionId,
-        sessionId: null,
-        loadSessionSupported: null,
-        lines: [],
-      });
-      void saveLastCwd(selected);
+    if (get().connected || get().busy || get().permission || get().switching) return;
+    const generation = ++contextGeneration;
+    const agentId = currentAgentId();
+    set({ switching: true });
+    try {
+      const selected = await open({ directory: true, multiple: false });
+      if (typeof selected !== "string") return;
+      const context = await loadCatalogContext(agentId, selected);
+      if (generation !== contextGeneration || currentAgentId() !== agentId) return;
+      set({ ...context, cwd: selected, error: null, sessionId: null,
+        loadSessionSupported: null, lines: [], permission: null, draft: "" });
+      await saveLastCwd(selected);
+    } catch (error) {
+      if (generation === contextGeneration) set({ error: String(error) });
+    } finally {
+      if (generation === contextGeneration) set({ switching: false });
     }
   },
   hydrateFromPrefs: async () => {
-    // Best-effort restore so Resume/Connect work after relaunch.
-    // Call after agent detect so `selectedAgentId` is already prefs-hydrated;
-    // still re-check agent after each await in case detect races this call.
-    if (get().cwd) return;
-    const lastCwd = await loadLastCwd();
-    if (!lastCwd) return;
-    if (get().cwd) return;
-
-    const agentWhenLoadStarted = currentAgentId();
-    let savedSessionId = await loadSavedSessionId(
-      agentWhenLoadStarted,
-      lastCwd,
-    );
-    // Bail if the user picked a folder while we were reading prefs.
-    if (get().cwd) return;
-
-    const agentNow = currentAgentId();
-    const gate = resumeIdAfterAgentMayHaveFlipped(
-      agentWhenLoadStarted,
-      agentNow,
-      savedSessionId,
-    );
-    if (gate.stale) {
-      // Detect flipped selectedAgentId mid-hydrate — reload that vendor’s map
-      // so we never stamp Grok’s Resume id onto a Codex selection (or vice versa).
-      savedSessionId = await loadSavedSessionId(agentNow, lastCwd);
-      if (get().cwd) return;
-    } else {
-      savedSessionId = gate.savedSessionId;
+    if (get().cwd || get().switching) return;
+    const generation = ++contextGeneration;
+    set({ switching: true });
+    try {
+      const lastCwd = await loadLastCwd();
+      if (generation !== contextGeneration) return;
+      // Initial agent detection can finish during prefs I/O. Retry the read
+      // for the current agent without mixing either vendor's metadata.
+      while (generation === contextGeneration && !get().cwd) {
+        const agentId = currentAgentId();
+        const context = await loadCatalogContext(agentId, lastCwd);
+        if (generation !== contextGeneration) return;
+        if (currentAgentId() !== agentId) continue;
+        set({ ...context, cwd: lastCwd, error: null });
+        break;
+      }
+    } finally {
+      if (generation === contextGeneration) set({ switching: false });
     }
-
-    set({
-      cwd: lastCwd,
-      savedSessionId,
-      error: null,
-    });
   },
-  /** Reload Resume id + clear transcript when switching agents (per-vendor). */
   reloadForAgent: async (agentId: string) => {
+    if (!get().cwd) { await get().hydrateFromPrefs(); return; }
+    const generation = ++contextGeneration;
     const cwd = get().cwd;
-    const savedSessionId = cwd
-      ? await loadSavedSessionId(agentId, cwd)
-      : null;
-    set(sessionPatchAfterAgentSwitch(savedSessionId));
+    set({ ...sessionPatchAfterAgentSwitch(null), catalog: emptyCatalog(), switching: true, draft: "" });
+    const context = await loadCatalogContext(agentId, cwd);
+    if (generation !== contextGeneration || currentAgentId() !== agentId || get().cwd !== cwd) return;
+    set({ ...context, switching: false });
   },
   connect: async (mode = "new") => {
     const cwd = get().cwd;
@@ -229,7 +191,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
     // Host now awaits handshake, but still guard double-clicks while busy /
     // already connected so we never stack a second connect_agent.
-    if (get().busy || get().connected) {
+    if (get().busy || get().connected || get().switching || get().permission) {
       return;
     }
     const resumeSessionId =
@@ -269,8 +231,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
             ],
     });
     const generation = ++connectionGeneration;
+    const agentId = currentAgentId();
+    connectionAgentId = agentId;
     try {
-      const agentId = useAgentsStore.getState().selectedAgentId || "grok";
       await invoke("connect_agent", {
         agentId,
         cwd,
@@ -285,8 +248,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // Invoke rejection path: status may also fire, but always drop a dead
       // Resume id here so the button cannot retry the same stale session.
       if (isSessionLoadFailedError(raw) && cwd) {
-        const agentId = currentAgentId();
-        void clearSavedSessionId(agentId, cwd);
+        if (resumeSessionId) {
+          ++catalogRevision;
+          set({ catalog: invalidateSession(get().catalog, cwd, resumeSessionId) });
+          void markSessionUnavailable(agentId, cwd, resumeSessionId).catch(() => {
+            if (generation === connectionGeneration) set({ catalogError: true });
+          });
+        }
         set({
           connected: false,
           busy: false,
@@ -462,9 +430,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           cwd &&
           sessionId
         ) {
-          const agentId = currentAgentId();
-          void saveSessionPrefs(agentId, cwd, sessionId).then(() => {
-            set({ savedSessionId: sessionId });
+          const agentId = connectionAgentId ?? currentAgentId();
+          const generation = connectionGeneration;
+          const revision = ++catalogRevision;
+          if (currentAgentId() === agentId) {
+            set({ savedSessionId: sessionId, catalog: rememberSession(get().catalog, cwd, sessionId, Date.now()) });
+          }
+          void saveKnownSession(agentId, cwd, sessionId).then((catalog) => {
+            if (generation === connectionGeneration && revision === catalogRevision && currentAgentId() === agentId && get().cwd === cwd) {
+              set({ catalog, catalogError: false });
+            }
+          }).catch(() => {
+            if (generation === connectionGeneration && revision === catalogRevision && currentAgentId() === agentId) set({ catalogError: true });
           });
         }
 
@@ -476,10 +453,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           ? recoverableSessionLoadMessage(ev.payload.error!)
           : (ev.payload.error ?? null);
         if (loadFailed && cwd) {
-          const agentId = currentAgentId();
-          void clearSavedSessionId(agentId, cwd).then(() => {
-            set({ savedSessionId: null });
-          });
+          const agentId = connectionAgentId ?? currentAgentId();
+          const failedId = get().savedSessionId;
+          const generation = connectionGeneration;
+          if (failedId) {
+            ++catalogRevision;
+            set({ catalog: invalidateSession(get().catalog, cwd, failedId) });
+            void markSessionUnavailable(agentId, cwd, failedId).catch(() => {
+              if (generation === connectionGeneration && currentAgentId() === agentId) set({ catalogError: true });
+            });
+          }
         }
 
         set({

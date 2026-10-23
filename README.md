@@ -43,7 +43,9 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 ## Status
 
-M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://github.com/Andy115951/acp-desktop/pull/8)): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences (`tauri-plugin-store`) keep cwd→sessionId **and** last workspace folder so relaunch restores the folder for Connect/Resume (no chat history locally).
+M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://github.com/Andy115951/acp-desktop/pull/8)): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences (`tauri-plugin-store`) keep lightweight per-agent session metadata and the last workspace folder (no chat history locally).
+
+**Saved sessions:** after Disconnect, choose an app-known session for the current agent/workspace and click Resume. New session keeps the earlier entries, and relaunch restores the most recently used session as the default. Existing cwd→sessionId preferences migrate automatically. Workspace/session selection is disabled until you disconnect; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. The picker currently lists app-known sessions only; recent-workspace shortcuts, rename/archive and capability-gated vendor discovery are tracked in [M10](https://github.com/Andy115951/acp-desktop/issues/33).
 
 Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` / `cargo test -p acp-desktop` + Vitest/`tsc` (CI on push/PR) cover `session/request_permission` allow/deny and `loadSession` replay without Grok. Host deadline-drains `session/load` ActiveSession replay so Resume does not miss `fake-agent: resumed`.
 
@@ -187,7 +189,7 @@ Upcoming M9–M12 plans and acceptance evidence live in the
 - ACP client: official Rust crate [`agent-client-protocol`](https://crates.io/crates/agent-client-protocol)
 - Layout: single repo (`src/` frontend + `src-tauri/` backend)
 - Agents: built-in table + user-defined command/args (no ACP Registry in v1)
-- Preferences: `tauri-plugin-store` (last folder / selected agent / `ui.locale`); no local session DB
+- Preferences: `tauri-plugin-store` (last folder / selected agent / `ui.locale` / per-agent session metadata); no local transcript database
 - First agent: **Grok Build** via `grok agent stdio`
 
 ### Still open
