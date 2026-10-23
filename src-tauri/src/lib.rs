@@ -46,11 +46,13 @@ async fn connect_agent(
 async fn disconnect_agent(app: tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let session = {
-        let mut guard = state
+        let guard = state
             .inner
             .lock()
             .map_err(|_| "session state lock poisoned".to_string())?;
-        guard.session.take()
+        // Keep the slot occupied until the ACP worker completes its cleanup,
+        // so Connect cannot install a new session underneath the old worker.
+        guard.session.clone()
     };
     if let Some(session) = session {
         // Clears any pending Ask oneshot before tearing down the ACP loop.

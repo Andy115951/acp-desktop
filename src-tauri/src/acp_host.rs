@@ -12,13 +12,14 @@ use agent_client_protocol::{
     AcpAgent, Agent, Client, ConnectionTo, SessionMessage,
 };
 use serde::Serialize;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use crate::agent_backend::enrich_connect_error;
 use std::sync::{Mutex as StdMutex};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot, watch, Mutex};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,7 +66,43 @@ enum HostCommand {
         reply: oneshot::Sender<Result<String, String>>,
     },
     Cancel,
-    Stop,
+}
+
+/// Keep control commands responsive while a prompt waits on the agent.
+async fn await_prompt<F: Future>(
+    prompt: F,
+    commands: &mut mpsc::UnboundedReceiver<HostCommand>,
+    pending: &Mutex<Option<(u64, PendingPermission)>>,
+    mut cancel: impl FnMut(),
+) -> Option<F::Output> {
+    tokio::pin!(prompt);
+    loop {
+        tokio::select! {
+            result = &mut prompt => return Some(result),
+            command = commands.recv() => match command {
+                Some(HostCommand::Cancel) => {
+                    cancel_pending_permission(pending).await;
+                    cancel();
+                }
+                Some(HostCommand::Prompt { reply, .. }) => {
+                    let _ = reply.send(Err("A prompt is already running.".into()));
+                }
+                None => return None,
+            }
+        }
+    }
+}
+
+/// Disconnect can interrupt initialize, session/load and an active prompt.
+async fn until_stopped<F: Future>(
+    future: F,
+    shutdown: &mut watch::Receiver<bool>,
+) -> Option<F::Output> {
+    tokio::select! {
+        biased;
+        _ = shutdown.wait_for(|stopped| *stopped) => None,
+        result = future => Some(result),
+    }
 }
 
 struct PendingPermission {
@@ -106,9 +143,8 @@ fn install_pending_permission(
 
 /// Take a pending permission oneshot (if any) and reply with `Cancelled`.
 ///
-/// Used when the UI Cancels a prompt while Ask is open: the host command loop
-/// may be blocked inside `Prompt` awaiting the agent, so clearing the shared
-/// slot here is what actually unblocks `session/request_permission`.
+/// Used for Cancel, Disconnect and agent exit so no Ask responder is left
+/// waiting after its session or prompt has ended.
 fn cancel_taken_permission(pending: Option<(u64, PendingPermission)>) -> bool {
     match pending {
         Some((_id, pending)) => {
@@ -130,6 +166,8 @@ async fn cancel_pending_permission(
 
 pub struct AcpSession {
     cmd_tx: mpsc::UnboundedSender<HostCommand>,
+    shutdown: watch::Sender<bool>,
+    stopped: watch::Receiver<bool>,
     pending_permission: Arc<Mutex<Option<(u64, PendingPermission)>>>,
     #[allow(dead_code)]
     next_perm_id: Arc<Mutex<u64>>,
@@ -142,6 +180,8 @@ impl Clone for AcpSession {
     fn clone(&self) -> Self {
         Self {
             cmd_tx: self.cmd_tx.clone(),
+            shutdown: self.shutdown.clone(),
+            stopped: self.stopped.clone(),
             pending_permission: self.pending_permission.clone(),
             next_perm_id: self.next_perm_id.clone(),
             cwd: self.cwd.clone(),
@@ -174,6 +214,8 @@ impl AcpSession {
         let state = app.state::<AppState>();
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<HostCommand>();
+        let (shutdown, mut shutdown_rx) = watch::channel(false);
+        let (stopped_tx, stopped) = watch::channel(false);
         let pending_permission: Arc<Mutex<Option<(u64, PendingPermission)>>> =
             Arc::new(Mutex::new(None));
         let next_perm_id = Arc::new(Mutex::new(1u64));
@@ -194,6 +236,8 @@ impl AcpSession {
 
         let session = AcpSession {
             cmd_tx,
+            shutdown,
+            stopped,
             pending_permission,
             next_perm_id,
             cwd,
@@ -248,7 +292,7 @@ impl AcpSession {
                         }
                     };
 
-                    let connect_result = Client
+                    let connection = Client
                         .builder()
                         .name("acp-desktop")
                         .on_receive_notification(
@@ -489,15 +533,26 @@ impl AcpSession {
                                                     ),
                                                 },
                                             );
-                                            let result = connection
+                                            let prompt = connection
                                                 .send_request(PromptRequest::new(
                                                     sid.clone(),
                                                     vec![ContentBlock::Text(TextContent::new(
                                                         text,
                                                     ))],
                                                 ))
-                                                .block_task()
-                                                .await;
+                                                .block_task();
+                                            let Some(result) = await_prompt(
+                                                prompt,
+                                                &mut cmd_rx,
+                                                &pending_perms,
+                                                || {
+                                                    let _ = connection.send_notification(
+                                                        CancelNotification::new(sid.clone()),
+                                                    );
+                                                },
+                                            ).await else {
+                                                break;
+                                            };
                                             let mapped = match result {
                                                 Ok(r) => Ok(format!("{:?}", r.stop_reason)),
                                                 Err(e) => Err(enrich_connect_error(
@@ -528,20 +583,18 @@ impl AcpSession {
                                                 CancelNotification::new(sid.clone()),
                                             );
                                         }
-                                        HostCommand::Stop => {
-                                            let _ = cancel_pending_permission(&pending_perms).await;
-                                            break;
-                                        }
                                     }
                                 }
 
                                 Ok(())
                             }
                             }
-                        })
-                        .await;
+                        });
 
-                    if let Err(e) = connect_result {
+                    let connect_result = until_stopped(connection, &mut shutdown_rx).await;
+                    cancel_pending_permission(&pending_for_handler).await;
+
+                    if let Some(Err(e)) = connect_result {
                         let msg = enrich_connect_error(&agent_id_for_task, &format!("{e}"));
                         let _ = app_for_status.emit(
                             "acp://status",
@@ -575,6 +628,9 @@ impl AcpSession {
                         );
                     }
                     clear_session_slot(&app_for_status);
+                    // Disconnect must await final status + slot cleanup before a
+                    // replacement session can publish its own events.
+                    stopped_tx.send_replace(true);
                 });
             })
             .map_err(|e| {
@@ -605,9 +661,7 @@ impl AcpSession {
     }
 
     pub async fn cancel(&self) -> Result<(), String> {
-        // Must clear pending Ask here: the cmd loop is often blocked inside
-        // Prompt awaiting the agent, so HostCommand::Cancel alone cannot
-        // unblock session/request_permission.
+        // Release the Ask immediately as well as notifying the running agent.
         let _ = cancel_pending_permission(&self.pending_permission).await;
         self.cmd_tx
             .send(HostCommand::Cancel)
@@ -616,7 +670,8 @@ impl AcpSession {
 
     pub async fn stop(&self) {
         let _ = cancel_pending_permission(&self.pending_permission).await;
-        let _ = self.cmd_tx.send(HostCommand::Stop);
+        self.shutdown.send_replace(true);
+        let _ = self.stopped.clone().wait_for(|stopped| *stopped).await;
     }
 
     pub async fn respond_permission(
@@ -830,6 +885,263 @@ fn _kind_name(kind: &PermissionOptionKind) -> &'static str {
         PermissionOptionKind::RejectOnce => "RejectOnce",
         PermissionOptionKind::RejectAlways => "RejectAlways",
         _ => "Other",
+    }
+}
+
+#[cfg(test)]
+mod session_control_tests {
+    use super::*;
+    use agent_client_protocol::schema::v1::{InitializeResponse, PromptResponse, StopReason};
+    use agent_client_protocol::Responder;
+    use std::future::pending;
+
+    const DEADLINE: Duration = Duration::from_millis(250);
+
+    #[tokio::test]
+    async fn cancel_reaches_agent_before_prompt_finishes() {
+        let (tx, mut commands) = mpsc::unbounded_channel();
+        let pending_permission = Mutex::new(None);
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        let mut cancel_tx = Some(cancel_tx);
+        tx.send(HostCommand::Cancel).unwrap();
+
+        let result = tokio::time::timeout(
+            DEADLINE,
+            await_prompt(
+                async {
+                    cancel_rx.await.expect("cancel notification");
+                    "cancelled"
+                },
+                &mut commands,
+                &pending_permission,
+                || {
+                    cancel_tx.take().unwrap().send(()).unwrap();
+                },
+            ),
+        )
+        .await
+        .expect("Cancel must reach the agent while its prompt is running");
+
+        assert_eq!(result, Some("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn running_agent_receives_session_cancel_without_a_permission_request() {
+        let (tx, mut commands) = mpsc::unbounded_channel();
+        let pending_prompt = Arc::new(Mutex::new(None::<Responder<PromptResponse>>));
+        let prompt_slot = pending_prompt.clone();
+        let cancel_slot = pending_prompt.clone();
+        // An in-memory ACP agent only finishes its prompt after it receives
+        // session/cancel. No Ask response can accidentally unblock this turn.
+        let agent = Agent
+            .builder()
+            .on_receive_request(
+                async move |request: InitializeRequest, responder, _cx| {
+                    responder.respond(InitializeResponse::new(request.protocol_version))
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async move |_request: PromptRequest, responder, _cx| {
+                    *prompt_slot.lock().await = Some(responder);
+                    tx.send(HostCommand::Cancel).unwrap();
+                    Ok(())
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_notification(
+                async move |cancel: CancelNotification, _cx| {
+                    assert_eq!(cancel.session_id, SessionId::new("interrupt-session"));
+                    cancel_slot
+                        .lock()
+                        .await
+                        .take()
+                        .unwrap()
+                        .respond(PromptResponse::new(StopReason::Cancelled))
+                },
+                agent_client_protocol::on_receive_notification!(),
+            );
+        let client = Client
+            .builder()
+            .connect_with(agent, async move |connection| {
+                connection
+                    .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                    .block_task()
+                    .await?;
+                let sid = SessionId::new("interrupt-session");
+                let result = await_prompt(
+                    connection
+                        .send_request(PromptRequest::new(
+                            sid.clone(),
+                            vec![ContentBlock::Text(TextContent::new(
+                                "wait for cancellation",
+                            ))],
+                        ))
+                        .block_task(),
+                    &mut commands,
+                    &Mutex::new(None),
+                    || {
+                        connection
+                            .send_notification(CancelNotification::new(sid.clone()))
+                            .unwrap();
+                    },
+                )
+                .await
+                .expect("command channel remains open")?;
+                assert_eq!(result.stop_reason, StopReason::Cancelled);
+                Ok(())
+            });
+
+        tokio::time::timeout(Duration::from_secs(5), client)
+            .await
+            .expect("agent must receive Cancel before its prompt can finish")
+            .expect("ACP cancellation round trip");
+        assert!(pending_prompt.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn disconnect_interrupts_an_unresponsive_connection() {
+        let (shutdown, mut shutdown_rx) = watch::channel(false);
+        let (started_tx, started_rx) = oneshot::channel();
+        let connection = tokio::spawn(async move {
+            until_stopped(
+                async {
+                    started_tx.send(()).unwrap();
+                    pending::<()>().await;
+                },
+                &mut shutdown_rx,
+            )
+            .await
+        });
+        started_rx.await.unwrap();
+        shutdown.send(true).unwrap();
+
+        let result = tokio::time::timeout(DEADLINE, connection)
+            .await
+            .expect("Disconnect must interrupt handshake or prompt")
+            .unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn overlapping_prompt_is_rejected_without_delaying_cancel() {
+        let (tx, mut commands) = mpsc::unbounded_channel();
+        let pending_permission = Mutex::new(None);
+        let (reply, rejected) = oneshot::channel();
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        let mut cancel_tx = Some(cancel_tx);
+        tx.send(HostCommand::Prompt {
+            text: "second turn".into(),
+            reply,
+        })
+        .unwrap();
+        tx.send(HostCommand::Cancel).unwrap();
+
+        tokio::time::timeout(
+            DEADLINE,
+            await_prompt(
+                async {
+                    cancel_rx.await.unwrap();
+                },
+                &mut commands,
+                &pending_permission,
+                || {
+                    cancel_tx.take().unwrap().send(()).unwrap();
+                },
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            rejected.await.unwrap().unwrap_err(),
+            "A prompt is already running."
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelling_prompt_resolves_pending_permission() {
+        let (tx, mut commands) = mpsc::unbounded_channel();
+        let (permission_tx, permission_rx) = oneshot::channel();
+        let pending_permission = Mutex::new(Some((
+            1,
+            PendingPermission {
+                reply: permission_tx,
+            },
+        )));
+        tx.send(HostCommand::Cancel).unwrap();
+
+        let result = tokio::time::timeout(
+            DEADLINE,
+            await_prompt(permission_rx, &mut commands, &pending_permission, || {}),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+        assert!(matches!(
+            result.outcome,
+            RequestPermissionOutcome::Cancelled
+        ));
+        assert!(pending_permission.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn completed_prompt_returns_normally() {
+        let (_tx, mut commands) = mpsc::unbounded_channel();
+        assert_eq!(
+            await_prompt(
+                async { "end_turn" },
+                &mut commands,
+                &Mutex::new(None),
+                || panic!("completed turn must not be cancelled"),
+            )
+            .await,
+            Some("end_turn")
+        );
+    }
+
+    #[tokio::test]
+    async fn disconnect_before_connection_starts_does_not_poll_it() {
+        let (_shutdown, mut shutdown_rx) = watch::channel(true);
+        let result = until_stopped(
+            async {
+                panic!("connection must not start after Disconnect");
+            },
+            &mut shutdown_rx,
+        )
+        .await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn stop_waits_for_worker_cleanup() {
+        let (cmd_tx, _commands) = mpsc::unbounded_channel();
+        let (shutdown, mut shutdown_rx) = watch::channel(false);
+        let (stopped_tx, stopped) = watch::channel(false);
+        let session = AcpSession {
+            cmd_tx,
+            shutdown,
+            stopped,
+            pending_permission: Arc::new(Mutex::new(None)),
+            next_perm_id: Arc::new(Mutex::new(1)),
+            cwd: PathBuf::from("."),
+            session_id: Arc::new(Mutex::new(None)),
+        };
+        let stop = session.stop();
+        tokio::pin!(stop);
+        tokio::time::timeout(DEADLINE, async {
+            tokio::select! {
+                _ = &mut stop => panic!("Disconnect returned before worker cleanup"),
+                _ = shutdown_rx.wait_for(|shutdown| *shutdown) => {},
+            }
+        })
+        .await
+        .unwrap();
+        assert!(!*session.stopped.borrow());
+
+        stopped_tx.send_replace(true);
+        tokio::time::timeout(DEADLINE, stop).await.unwrap();
     }
 }
 
