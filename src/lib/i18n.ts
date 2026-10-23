@@ -90,11 +90,61 @@ export type MessageKey =
   | "chat.transcript"
   | "chat.latest"
   | "chat.message"
-  | "chat.composerHelp";
+  | "chat.composerHelp"
+  | "header.description"
+  | "chat.copy"
+  | "chat.copyCode"
+  | "chat.copied"
+  | "chat.copyFailed"
+  | "chat.code"
+  | "chat.image"
+  | "error.handshake"
+  | "error.timeout"
+  | "error.network"
+  | "error.session"
+  | "error.permission"
+  | "tool.pending"
+  | "tool.running"
+  | "tool.completed"
+  | "tool.failed"
+  | "tool.cancelled"
+  | "tool.allowed"
+  | "tool.rejected"
+  | "tool.input"
+  | "tool.output"
+  | "tool.diff"
+  | "tool.before"
+  | "tool.after"
+  | "tool.terminal";
 
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "header.description": "Conversations with your local coding agents.",
+  "chat.copy": "Copy message",
+  "chat.copyCode": "Copy code",
+  "chat.copied": "Copied",
+  "chat.copyFailed": "Copy failed — select text to copy",
+  "chat.code": "Code",
+  "chat.image": "Image",
+  "error.handshake": "The agent started but ACP initialization failed. Check its adapter version and protocol support.",
+  "error.timeout": "The agent did not respond in time. Check its startup, network and adapter configuration, then reconnect.",
+  "error.network": "The agent could not reach its server. Check the CLI endpoint, proxy and network, then reconnect.",
+  "error.session": "The agent initialized but could not create a session. Check the workspace and CLI diagnostics, then reconnect.",
+  "error.permission": "The tool permission could not be submitted. Review technical details and retry the decision.",
+  "tool.pending": "Pending",
+  "tool.running": "Running",
+  "tool.completed": "Completed",
+  "tool.failed": "Failed",
+  "tool.cancelled": "Cancelled",
+  "tool.allowed": "Permission allowed",
+  "tool.rejected": "Permission denied",
+  "tool.input": "Input",
+  "tool.output": "Output",
+  "tool.diff": "File change",
+  "tool.before": "Before",
+  "tool.after": "After",
+  "tool.terminal": "Terminal reference",
   "chat.you": "You",
   "chat.agent": "Assistant",
   "chat.thinking": "Thinking",
@@ -135,7 +185,7 @@ const en: Dictionary = {
   "agents.missingSuffix": " (missing)",
   "agents.npxFallback":
     "{cli} on PATH; Connect spawns via npx (@agentclientprotocol/{adapter}). Install `{adapter}` globally to skip the download.",
-  "dev.title": "Dev: fake ACP agent",
+  "dev.title": "Developer tools",
   "dev.blurbBefore": "Deterministic ",
   "dev.blurbAfter":
     " for permission-card E2E (process env only; not persisted).",
@@ -186,6 +236,31 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "header.description": "与本机编程智能体展开对话。",
+  "chat.copy": "复制消息",
+  "chat.copyCode": "复制代码",
+  "chat.copied": "已复制",
+  "chat.copyFailed": "复制失败，请选择文本复制",
+  "chat.code": "代码",
+  "chat.image": "图片",
+  "error.handshake": "智能体已启动，但 ACP 初始化失败。请检查适配器版本及协议支持。",
+  "error.timeout": "智能体响应超时。请检查启动、网络及适配器配置，然后重新连接。",
+  "error.network": "智能体无法连接服务器。请检查 CLI 服务地址、代理及网络，然后重新连接。",
+  "error.session": "智能体已初始化，但无法创建会话。请检查工作文件夹及 CLI 诊断信息，然后重新连接。",
+  "error.permission": "无法提交工具权限选择。请查看技术详情后重试。",
+  "tool.pending": "等待执行",
+  "tool.running": "执行中",
+  "tool.completed": "已完成",
+  "tool.failed": "失败",
+  "tool.cancelled": "已取消",
+  "tool.allowed": "已允许执行",
+  "tool.rejected": "已拒绝执行",
+  "tool.input": "输入",
+  "tool.output": "输出",
+  "tool.diff": "文件变更",
+  "tool.before": "修改前",
+  "tool.after": "修改后",
+  "tool.terminal": "终端引用",
   "chat.you": "你",
   "chat.agent": "助手",
   "chat.thinking": "思考过程",
@@ -226,7 +301,7 @@ const zhCN: Dictionary = {
   "agents.missingSuffix": "（未找到）",
   "agents.npxFallback":
     "已在 PATH 中找到 {cli}；连接时通过 npx 启动 @agentclientprotocol/{adapter}。可全局安装 `{adapter}` 以跳过下载。",
-  "dev.title": "开发：假 ACP agent",
+  "dev.title": "开发工具",
   "dev.blurbBefore": "确定性 ",
   "dev.blurbAfter":
     "，用于权限卡片 E2E（仅进程环境变量；不持久化）。",

@@ -18,18 +18,20 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_client_protocol::schema::v1::{
-    AgentCapabilities, CancelNotification, ContentBlock, ContentChunk, InitializeRequest,
+    AgentCapabilities, CancelNotification, ContentBlock, ContentChunk, Diff, InitializeRequest,
     InitializeResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
     NewSessionResponse, PermissionOption, PermissionOptionKind, PromptRequest, PromptResponse,
     RequestPermissionOutcome, RequestPermissionRequest, SessionId, SessionNotification,
-    SessionUpdate, StopReason, TextContent, ToolCallStatus, ToolCallUpdate, ToolCallUpdateFields,
-    ToolKind,
+    SessionUpdate, StopReason, TextContent, ToolCall, ToolCallLocation, ToolCallStatus,
+    ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Stdio};
 
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+static NEXT_TOOL: AtomicU64 = AtomicU64::new(1);
 
 const RESUME_REPLAY: &str = "fake-agent: resumed";
+const MARKDOWN_REPLY: &str = "## Markdown reply\n\nA **streamed** answer with `inline code`.\n\n- First item\n- 中文 🦊\n\n```ts\nconst greeting = 'hello';\nconsole.log(greeting);\n```\n\n| Item | State |\n| --- | --- |\n| Rendering | ready |\n\n[Project](https://github.com/Andy115951/acp-desktop)\n\n[Unsafe link](javascript:alert(1))\n\n![remote image](https://example.invalid/should-not-load.png)\n\n<script>alert('untrusted')</script>\n";
 
 fn is_allow(outcome: &RequestPermissionOutcome) -> bool {
     match outcome {
@@ -120,7 +122,9 @@ async fn main() -> agent_client_protocol::Result<()> {
                 connection.send_notification(SessionNotification::new(
                     session_id,
                     SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
-                        TextContent::new(RESUME_REPLAY),
+                        TextContent::new(if std::env::var("ACP_DESKTOP_FAKE_RICH_REPLAY").as_deref() == Ok("1") {
+                            format!("{RESUME_REPLAY}\n\n{MARKDOWN_REPLY}")
+                        } else { RESUME_REPLAY.to_string() }),
                     ))),
                 ))?;
                 connection.spawn(async move {
@@ -151,6 +155,57 @@ async fn main() -> agent_client_protocol::Result<()> {
                 connection.spawn({
                     let connection = connection.clone();
                     async move {
+                        if scenario == "fake:markdown" {
+                            let chars: Vec<char> = MARKDOWN_REPLY.chars().collect();
+                            for chunk in chars.chunks(24) {
+                                connection.send_notification(SessionNotification::new(
+                                    session_id.clone(), SessionUpdate::AgentMessageChunk(ContentChunk::new(
+                                        ContentBlock::Text(TextContent::new(chunk.iter().collect::<String>())),
+                                    )),
+                                ))?;
+                                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                            }
+                            responder.respond(PromptResponse::new(StopReason::EndTurn))?;
+                            return Ok(());
+                        }
+                        if scenario == "fake:tool" {
+                            let id = format!("fake-rich-{}", NEXT_TOOL.fetch_add(1, Ordering::Relaxed));
+                            let input = serde_json::json!({"command": "printf 'approved\\n' > preview.txt", "fixtureOnly": true});
+                            let location = ToolCallLocation::new("/fixture/preview.txt").line(1);
+                            connection.send_notification(SessionNotification::new(session_id.clone(),
+                                SessionUpdate::ToolCall(ToolCall::new(id.clone(), "Preview file change")
+                                    .kind(ToolKind::Edit).status(ToolCallStatus::Pending)
+                                    .raw_input(input.clone()).locations(vec![location.clone()])),
+                            ))?;
+                            let permission = permission_request(session_id.clone(), &id, "Preview file change");
+                            let permission = RequestPermissionRequest::new(session_id.clone(),
+                                ToolCallUpdate::new(id.clone(), ToolCallUpdateFields::new()
+                                    .title("Preview file change").kind(ToolKind::Edit)
+                                    .raw_input(input).locations(vec![location])), permission.options);
+                            let result = connection.send_request(permission).block_task().await?;
+                            let allowed = is_allow(&result.outcome);
+                            if allowed {
+                                connection.send_notification(SessionNotification::new(session_id.clone(),
+                                    SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(id.clone(),
+                                        ToolCallUpdateFields::new().status(ToolCallStatus::InProgress))),
+                                ))?;
+                            }
+                            let content = if allowed { vec![Diff::new("/fixture/preview.txt", "approved\n").old_text("before\n").into()] }
+                                else { vec![ContentBlock::Text(TextContent::new("Tool refused; no file was written.")).into()] };
+                            connection.send_notification(SessionNotification::new(session_id.clone(),
+                                SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(id,
+                                    ToolCallUpdateFields::new()
+                                        .status(if allowed { ToolCallStatus::Completed } else { ToolCallStatus::Failed })
+                                        .content(content).raw_output(serde_json::json!({"outcome": permission_label(&result.outcome)})))),
+                            ))?;
+                            connection.send_notification(SessionNotification::new(session_id,
+                                SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(TextContent::new(
+                                    format!("Tool outcome: **{}**.", permission_label(&result.outcome)),
+                                )))),
+                            ))?;
+                            responder.respond(PromptResponse::new(StopReason::EndTurn))?;
+                            return Ok(());
+                        }
                         if scenario == "fake:stream" || scenario == "fake:long-stream" {
                             for text in ["Thinking ", "about the reply."] {
                                 connection.send_notification(SessionNotification::new(

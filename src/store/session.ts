@@ -21,7 +21,7 @@ import {
   type SessionByCwd,
 } from "../lib/sessionPrefs";
 import { sessionPatchAfterClear } from "../lib/sessionUiGates";
-import { appendStreamLine, sealTranscript, type StreamLine } from "../lib/transcript";
+import { appendStreamLine, sealTranscript, recordToolDecision, type StreamLine, type ToolData } from "../lib/transcript";
 
 import {
   resumeIdAfterAgentMayHaveFlipped,
@@ -34,6 +34,7 @@ export type PermissionRequest = {
   title: string;
   detail: string;
   options: { id: string; name: string; kind: string }[];
+  tool?: ToolData;
 };
 
 const PREFS_FILE = "prefs.json";
@@ -141,6 +142,7 @@ type SessionState = {
 };
 
 let lineCounter = 0;
+let connectionGeneration = 0;
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   cwd: null,
@@ -266,6 +268,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
               },
             ],
     });
+    const generation = ++connectionGeneration;
     try {
       const agentId = useAgentsStore.getState().selectedAgentId || "grok";
       await invoke("connect_agent", {
@@ -273,9 +276,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         cwd,
         resumeSessionId: resumeSessionId ?? null,
       });
+      if (generation !== connectionGeneration) return;
       // connected / sessionId / replay lines come from acp://status + acp://stream
       set({ busy: false });
     } catch (e) {
+      if (generation !== connectionGeneration) return;
       const raw = e instanceof Error ? e.message : String(e);
       // Invoke rejection path: status may also fire, but always drop a dead
       // Resume id here so the button cannot retry the same stale session.
@@ -298,15 +303,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
   disconnect: async () => {
+    const generation = ++connectionGeneration;
     try {
       await invoke("disconnect_agent");
     } finally {
+      if (generation !== connectionGeneration) return;
       set({
         connected: false,
         busy: false,
         sessionId: null,
         permission: null,
-        lines: sealTranscript(get().lines),
+        lines: recordToolDecision(get().lines, get().permission?.tool?.id, "cancelled"),
       });
     }
   },
@@ -315,6 +322,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!text.trim()) return;
     // Ask modal owns the turn; never queue a second prompt underneath it.
     if (get().permission || !get().connected || get().busy) return;
+    const generation = connectionGeneration;
     set({
       draft: "",
       busy: true,
@@ -326,6 +334,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
     try {
       const stop = await invoke<string>("send_prompt", { text });
+      if (generation !== connectionGeneration) return;
       set({
         busy: false,
         lines: [
@@ -334,6 +343,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ],
       });
     } catch (e) {
+      if (generation !== connectionGeneration) return;
       set({
         busy: false,
         error: e instanceof Error ? e.message : String(e),
@@ -342,7 +352,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
   cancel: async () => {
-    set({ lines: sealTranscript(get().lines) });
+    set({ lines: recordToolDecision(get().lines, get().permission?.tool?.id, "cancelled") });
     // Host cancel_prompt clears the pending Ask oneshot. Do not also call
     // respond_permission here — that would race and surface "no pending".
     if (get().permission) {
@@ -357,36 +367,49 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   respondPermission: async (optionId) => {
     const perm = get().permission;
     if (!perm) return;
+    const generation = connectionGeneration;
     try {
       await invoke("respond_permission", {
         requestId: perm.requestId,
         optionId,
       });
-      set({ permission: null });
+      if (generation !== connectionGeneration) return;
+      const option = perm.options.find((candidate) => candidate.id === optionId);
+      const decision = optionId === null ? "cancelled" : option?.kind.startsWith("Allow") ? "allowed" : "rejected";
+      set((state) => ({
+        // Do not dismiss a newer request that arrived while invoke resolved.
+        ...(state.permission?.requestId === perm.requestId ? { permission: null } : {}),
+        lines: recordToolDecision(state.lines, perm.tool?.id, decision),
+      }));
     } catch (e) {
+      if (generation !== connectionGeneration) return;
       const message = e instanceof Error ? e.message : String(e);
       // Cancel / Disconnect already cleared the host oneshot — dismiss quietly.
       if (isNoPendingPermissionError(message)) {
-        set({ permission: null });
+        set((state) => ({
+          ...(state.permission?.requestId === perm.requestId ? { permission: null } : {}),
+          lines: recordToolDecision(state.lines, perm.tool?.id, "cancelled"),
+        }));
         return;
       }
       // Stale id: host kept the real Ask — leave modal up, no red banner.
       if (isStalePermissionError(message)) {
         return;
       }
-      set({ error: message });
+      set({ error: `respond_permission failed: ${message}` });
     }
   },
   bindEvents: async () => {
     const unsubs: UnlistenFn[] = [];
     unsubs.push(
-      await listen<{ kind: string; text: string }>("acp://stream", (ev) => {
+      await listen<{ kind: string; text: string; tool?: ToolData }>("acp://stream", (ev) => {
         // Functional update preserves back-to-back chunks and replay order.
         set((state) => ({
           lines: appendStreamLine(state.lines, {
             id: `s-${++lineCounter}`,
             kind: ev.payload.kind,
             text: ev.payload.text,
+            tool: ev.payload.tool,
           }),
         }));
       }),
@@ -397,14 +420,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         title: string;
         detail: string;
         options: { id: string; name: string; kind: string }[];
+        tool?: ToolData;
       }>("acp://permission", (ev) => {
         set((state) => ({
-          lines: sealTranscript(state.lines),
+          lines: ev.payload.tool ? appendStreamLine(state.lines, {
+            id: `tool-${++lineCounter}`, kind: "tool_call", text: ev.payload.title, tool: ev.payload.tool,
+          }) : sealTranscript(state.lines),
           permission: {
             requestId: ev.payload.requestId,
             title: ev.payload.title,
             detail: ev.payload.detail,
             options: ev.payload.options,
+            tool: ev.payload.tool,
           },
         }));
       }),
@@ -463,7 +490,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           error: statusError,
           loadSessionSupported,
           ...(!ev.payload.connected || !ev.payload.busy || statusError
-            ? { lines: sealTranscript(get().lines) }
+            ? { lines: !ev.payload.connected
+                ? recordToolDecision(get().lines, get().permission?.tool?.id, "cancelled")
+                : sealTranscript(get().lines) }
             : {}),
           // Agent exit / Disconnect via status: drop stale Ask so Allow cannot
           // hit a torn-down oneshot after the modal was left open.

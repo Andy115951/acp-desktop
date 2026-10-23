@@ -125,6 +125,27 @@ async fn run_scenario(select_option: Option<&str>, prompt: &str) -> (StopReason,
 }
 
 #[tokio::test]
+async fn rich_tool_fixture_reports_allow_and_reject_without_real_side_effects() {
+    let (reason, text, saw) = run_scenario(Some("allow"), "fake:tool").await;
+    assert!(saw);
+    assert_eq!(reason, StopReason::EndTurn);
+    assert!(text.contains("**allowed**"), "{text}");
+    let (reason, text, saw) = run_scenario(Some("reject"), "fake:tool").await;
+    assert!(saw);
+    assert_eq!(reason, StopReason::EndTurn);
+    assert!(text.contains("**rejected**"), "{text}");
+}
+
+#[tokio::test]
+async fn markdown_fixture_streams_fenced_code_and_untrusted_markup_as_text() {
+    let (reason, text, saw) = run_scenario(None, "fake:markdown").await;
+    assert_eq!(reason, StopReason::EndTurn);
+    assert!(!saw);
+    assert!(text.contains("```ts\nconst greeting"), "{text}");
+    assert!(text.contains("<script>"));
+}
+
+#[tokio::test]
 async fn streaming_fixture_sends_multiple_exact_text_chunks_without_permission() {
     let (reason, text, saw) = run_scenario(None, "fake:stream").await;
     assert_eq!(reason, StopReason::EndTurn);

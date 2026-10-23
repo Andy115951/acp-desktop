@@ -65,7 +65,7 @@ Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2
 
 ## Develop
 
-Prerequisites: [Node.js](https://nodejs.org/), [Rust](https://rustup.rs/), and OS webview deps ([Tauri prerequisites](https://tauri.app/start/prerequisites/) — on macOS that means Xcode CLT / WebKit).
+Prerequisites: [Node.js](https://nodejs.org/) 22.12+ (or a supported newer LTS), [Rust](https://rustup.rs/), and OS webview deps ([Tauri prerequisites](https://tauri.app/start/prerequisites/) — on macOS that means Xcode CLT / WebKit).
 
 ```bash
 npm install
@@ -138,6 +138,11 @@ permission requests issued before either decision. Starting the fake binary with
 These fixtures do not call a vendor API or perform the proposed tool actions.
 For conversation rendering, `fake:stream` emits thought/reply chunks and
 `fake:long-stream` emits 180 lines over several seconds for scroll testing.
+`fake:markdown` streams headings, lists, code and unsafe-content samples;
+`fake:tool` previews input, locations, updates and a diff after an Ask decision
+without writing a file. Set `ACP_DESKTOP_FAKE_RICH_REPLAY=1` when launching the
+app to include the Markdown fixture in fake Resume replay. The fake-agent
+toggle is under the collapsed **Developer tools** panel below the conversation.
 
 Env alternatives:
 

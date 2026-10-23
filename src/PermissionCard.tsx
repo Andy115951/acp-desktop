@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import { permissionFocusOptionIndex } from "./lib/permissionHotkey";
 import { t, type Locale } from "./lib/i18n";
 import type { PermissionRequest } from "./store/session";
+import { ToolDetails } from "./ToolCard";
 
 type Props = {
   permission: PermissionRequest;
@@ -33,7 +34,8 @@ export function PermissionCard({
       <h3 className="text-sm font-semibold text-amber-50">
         {permission.title}
       </h3>
-      <p className="text-xs text-slate-400 break-all">{permission.detail}</p>
+      {permission.tool ? <ToolDetails tool={permission.tool} locale={locale} /> :
+        <p className="text-xs text-slate-400 break-all">{permission.detail}</p>}
       <div className="flex flex-wrap gap-2 pt-1">
         {permission.options.map((opt, idx) => {
           const isAllow = opt.kind.startsWith("Allow");

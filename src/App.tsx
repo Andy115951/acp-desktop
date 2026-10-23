@@ -173,9 +173,7 @@ export default function App() {
           </label>
         </div>
         <p className="text-sm text-slate-400">
-          {t(locale, "header.taglineBefore")}
-          <code className="text-slate-300">session/load</code>
-          {t(locale, "header.taglineAfter")}
+          {t(locale, "header.description")}
         </p>
       </header>
 
@@ -290,44 +288,6 @@ export default function App() {
         </ul>
       </section>
 
-      <section className="rounded-xl border border-amber-900/50 bg-amber-950/20 p-4 space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-medium text-amber-100">
-              {t(locale, "dev.title")}
-            </h2>
-            <p className="text-xs text-amber-200/70">
-              {t(locale, "dev.blurbBefore")}
-              <code className="text-amber-100/90">
-                session/request_permission
-              </code>
-              {t(locale, "dev.blurbAfter")}
-            </p>
-          </div>
-          <label className="flex items-center gap-2 text-xs text-amber-100">
-            <input
-              type="checkbox"
-              checked={usingFake}
-              disabled={connected || busy}
-              onChange={(e) => {
-                void setFakeAgent(e.target.checked).catch(() => undefined);
-              }}
-              className="rounded border-amber-700"
-            />
-            {t(locale, "dev.useFake")}
-          </label>
-        </div>
-        <p className="text-xs text-amber-200/60 break-all">
-          {t(locale, "dev.mode")}: {override?.mode ?? "…"} ·{" "}
-          {t(locale, "dev.cmd")}:{" "}
-          <code>{override?.command?.join(" ") ?? "—"}</code>
-          {override?.fakeAgentPath
-            ? ` · ${t(locale, "dev.binary")} ${override.fakeAgentPath}`
-            : usingFake
-              ? ` · ${t(locale, "dev.binaryMissing")}`
-              : ""}
-        </p>
-      </section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
         <h2 className="text-sm font-medium text-slate-200">
@@ -498,6 +458,43 @@ export default function App() {
         </div>
         <p id="composer-help" className="text-xs text-slate-500">{t(locale, "chat.composerHelp")}</p>
       </section>
+      <details className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 space-y-3">
+        <summary className="cursor-pointer text-xs text-slate-500">{t(locale, "dev.title")}</summary>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-amber-200/70">
+              {t(locale, "dev.blurbBefore")}
+              <code className="text-amber-100/90">
+                session/request_permission
+              </code>
+              {t(locale, "dev.blurbAfter")}
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-amber-100">
+            <input
+              type="checkbox"
+              checked={usingFake}
+              disabled={connected || busy}
+              onChange={(e) => {
+                void setFakeAgent(e.target.checked).catch(() => undefined);
+              }}
+              className="rounded border-amber-700"
+            />
+            {t(locale, "dev.useFake")}
+          </label>
+        </div>
+        <p className="text-xs text-amber-200/60 break-all">
+          {t(locale, "dev.mode")}: {override?.mode ?? "…"} ·{" "}
+          {t(locale, "dev.cmd")}:{" "}
+          <code>{override?.command?.join(" ") ?? "—"}</code>
+          {override?.fakeAgentPath
+            ? ` · ${t(locale, "dev.binary")} ${override.fakeAgentPath}`
+            : usingFake
+              ? ` · ${t(locale, "dev.binaryMissing")}`
+              : ""}
+        </p>
+      </details>
+
     </main>
   );
 }

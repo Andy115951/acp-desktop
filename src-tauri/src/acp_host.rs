@@ -5,7 +5,7 @@ use agent_client_protocol::schema::v1::{
     CancelNotification, ContentBlock, InitializeRequest, LoadSessionRequest, NewSessionRequest,
     PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SelectedPermissionOutcome, SessionId, SessionNotification,
-    SessionUpdate, TextContent,
+    SessionUpdate, TextContent, ToolCallContent, ToolCallLocation, ToolCallUpdate,
 };
 use agent_client_protocol::util::MatchDispatch;
 use agent_client_protocol::{
@@ -26,6 +26,36 @@ use tokio::sync::{mpsc, oneshot, watch, Mutex};
 pub struct StreamEvent {
     pub kind: String,
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<ToolCallDto>,
+}
+
+/// Keep tool identity and partial-update semantics across the UI bridge.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallDto {
+    pub id: String,
+    pub title: Option<String>,
+    pub kind: Option<String>,
+    pub status: Option<String>,
+    pub raw_input: Option<serde_json::Value>,
+    pub raw_output: Option<serde_json::Value>,
+    pub content: Option<Vec<ToolCallContent>>,
+    pub locations: Option<Vec<ToolCallLocation>>,
+}
+
+fn tool_update_dto(update: &ToolCallUpdate) -> ToolCallDto {
+    let fields = &update.fields;
+    ToolCallDto {
+        id: update.tool_call_id.0.to_string(),
+        title: fields.title.clone(),
+        kind: fields.kind.as_ref().map(|kind| format!("{kind:?}")),
+        status: fields.status.as_ref().map(|status| format!("{status:?}")),
+        raw_input: fields.raw_input.clone(),
+        raw_output: fields.raw_output.clone(),
+        content: fields.content.clone(),
+        locations: fields.locations.clone(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -35,6 +65,7 @@ pub struct PermissionEvent {
     pub title: String,
     pub detail: String,
     pub options: Vec<PermissionOptionDto>,
+    pub tool: ToolCallDto,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -351,6 +382,7 @@ impl AcpSession {
                                             title,
                                             detail,
                                             options,
+                                            tool: tool_update_dto(&request.tool_call),
                                         },
                                     );
 
@@ -385,7 +417,10 @@ impl AcpSession {
                                 let init = connection
                                     .send_request(InitializeRequest::new(ProtocolVersion::V1))
                                     .block_task()
-                                    .await?;
+                                    .await.map_err(|error| {
+                                        agent_client_protocol::Error::internal_error()
+                                            .data(format!("initialize failed: {error}"))
+                                    })?;
 
                                 let load_session_supported =
                                     init.agent_capabilities.load_session;
@@ -485,6 +520,7 @@ impl AcpSession {
                                             "acp://stream",
                                             StreamEvent {
                                                 kind: "status".into(),
+                                                tool: None,
                                                 text: "Resume: session loaded"
                                                     .into(),
                                             },
@@ -495,7 +531,10 @@ impl AcpSession {
                                     let new_session = connection
                                         .send_request(NewSessionRequest::new(cwd.clone()))
                                         .block_task()
-                                        .await?;
+                                        .await.map_err(|error| {
+                                            agent_client_protocol::Error::internal_error()
+                                                .data(format!("session/new failed: {error}"))
+                                        })?;
                                     new_session.session_id
                                 };
 
@@ -798,7 +837,21 @@ fn stream_event_for_session_update(update: &SessionUpdate) -> Option<StreamEvent
         // `SessionUpdate` is non_exhaustive; never Debug-dump unknowns into chat.
         _ => return None,
     };
-    Some(StreamEvent { kind, text })
+    let tool = match update {
+        SessionUpdate::ToolCall(call) => Some(ToolCallDto {
+            id: call.tool_call_id.0.to_string(),
+            title: Some(call.title.clone()),
+            kind: Some(format!("{:?}", call.kind)),
+            status: Some(format!("{:?}", call.status)),
+            raw_input: call.raw_input.clone(),
+            raw_output: call.raw_output.clone(),
+            content: Some(call.content.clone()),
+            locations: Some(call.locations.clone()),
+        }),
+        SessionUpdate::ToolCallUpdate(update) => Some(tool_update_dto(update)),
+        _ => None,
+    };
+    Some(StreamEvent { kind, text, tool })
 }
 
 fn emit_session_update(app: &AppHandle, update: &SessionUpdate) {
@@ -1325,6 +1378,30 @@ mod stream_event_mapping_tests {
                 "metadata update must not leak: {update:?}"
             );
         }
+    }
+
+    #[test]
+    fn tool_bridge_retains_input_locations_diff_and_partial_update_semantics() {
+        use agent_client_protocol::schema::v1::{Diff, ToolCallLocation};
+        let initial = SessionUpdate::ToolCall(ToolCall::new("rich", "Edit file")
+            .raw_input(serde_json::json!({"command": "echo approved"}))
+            .locations(vec![ToolCallLocation::new("/workspace/file.txt").line(2)]));
+        let tool = stream_event_for_session_update(&initial).unwrap().tool.unwrap();
+        assert_eq!(tool.id, "rich");
+        assert_eq!(tool.raw_input.unwrap()["command"], "echo approved");
+        assert_eq!(tool.locations.unwrap()[0].path.to_str(), Some("/workspace/file.txt"));
+
+        let update = SessionUpdate::ToolCallUpdate(ToolCallUpdate::new("rich", ToolCallUpdateFields::new()
+            .status(ToolCallStatus::Completed)
+            .content(vec![Diff::new("/workspace/file.txt", "after").old_text("before").into()])
+            .raw_output(serde_json::json!({"ok": true}))));
+        let tool = stream_event_for_session_update(&update).unwrap().tool.unwrap();
+        assert!(tool.title.is_none(), "absent titles must not overwrite the initial title");
+        assert!(tool.raw_input.is_none(), "partial updates must not erase the input");
+        let value = serde_json::to_value(tool).unwrap();
+        assert_eq!(value["content"][0]["newText"], "after");
+        assert_eq!(value["content"][0]["oldText"], "before");
+        assert_eq!(value["rawOutput"]["ok"], true);
     }
 
     #[test]
