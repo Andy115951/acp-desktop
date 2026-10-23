@@ -25,6 +25,11 @@ struct TurnOutcome {
 }
 
 async fn run_turn(select_option: Option<&str>) -> (StopReason, String, bool) {
+    run_scenario(select_option, "smoke").await
+}
+
+async fn run_scenario(select_option: Option<&str>, prompt: &str) -> (StopReason, String, bool) {
+    let prompt_text = prompt.to_string();
     let outcome = TurnOutcome::default();
     let select = Arc::new(select_option.map(|s| s.to_string()));
 
@@ -93,7 +98,7 @@ async fn run_turn(select_option: Option<&str>) -> (StopReason, String, bool) {
                 let prompt = connection
                     .send_request(PromptRequest::new(
                         session.session_id.clone(),
-                        vec![ContentBlock::Text(TextContent::new("smoke"))],
+                        vec![ContentBlock::Text(TextContent::new(prompt_text))],
                     ))
                     .block_task()
                     .await?;
@@ -117,6 +122,22 @@ async fn run_turn(select_option: Option<&str>) -> (StopReason, String, bool) {
     let text = outcome.agent_text.lock().unwrap().clone();
     let saw = *outcome.saw_permission.lock().unwrap();
     (reason, text, saw)
+}
+
+#[tokio::test]
+async fn parallel_permission_fixture_waits_for_both_decisions() {
+    let (reason, text, saw) = run_scenario(Some("allow"), "fake:parallel").await;
+    assert!(saw);
+    assert_eq!(reason, StopReason::EndTurn);
+    assert!(text.contains("first=allowed second=allowed"), "{text}");
+}
+
+#[tokio::test]
+async fn rejection_fixture_reports_the_refusal() {
+    let (reason, text, _) = run_scenario(Some("reject"), "fake:deny-report").await;
+    assert_eq!(reason, StopReason::EndTurn);
+    assert!(text.contains("tool rejected by user"), "{text}");
+    assert!(!text.contains("fake-agent: allowed"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

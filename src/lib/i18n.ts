@@ -66,11 +66,31 @@ export type MessageKey =
   | "permission.hotkeys"
   | "auth.codex"
   | "auth.claude"
-  | "auth.copilot";
+  | "auth.copilot"
+  | "error.details"
+  | "error.general"
+  | "error.usageLimit"
+  | "error.staleSession"
+  | "error.connection"
+  | "error.auth"
+  | "error.workspace"
+  | "error.noSavedSession"
+  | "error.resumeUnsupported"
+  | "error.startup";
 
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "error.details": "Technical details",
+  "error.general": "The request could not be completed. Open technical details for diagnostics, then retry.",
+  "error.usageLimit": "The agent reached its usage or rate limit. Check its usage and retry later.",
+  "error.staleSession": "The saved session is missing or expired. Its Resume entry was cleared; start a new session.",
+  "error.connection": "The connection could not be verified. Check the CLI's certificate and network configuration.",
+  "error.auth": "The agent could not authenticate. Check its local CLI login or API configuration, then reconnect.",
+  "error.workspace": "Pick a workspace folder before connecting.",
+  "error.noSavedSession": "No saved session is available for this folder. Start a new session.",
+  "error.resumeUnsupported": "This agent does not support restoring sessions. Start a new session.",
+  "error.startup": "The agent could not start. Check its executable, adapter and PATH, then reconnect.",
   "badge.acpClient": "ACP client",
   "header.taglineBefore":
     "ACP host path: last folder restores on launch; switch Grok / Codex / Claude / Copilot in the Agents list (histories stay per-vendor). Connect via host APIs, stream a turn, approve tools with Ask, resume via ",
@@ -138,6 +158,16 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "error.details": "技术详情",
+  "error.general": "请求未能完成。可展开技术详情查看诊断信息，然后重试。",
+  "error.usageLimit": "智能体已达到用量或请求频率上限。请检查用量，稍后重试。",
+  "error.staleSession": "已保存的会话缺失或已过期，恢复记录已清除。请新建会话。",
+  "error.connection": "无法验证连接。请检查本机 CLI 的证书和网络配置。",
+  "error.auth": "智能体认证失败。请检查本机 CLI 的登录状态或 API 配置，然后重新连接。",
+  "error.workspace": "请先选择工作文件夹，再连接智能体。",
+  "error.noSavedSession": "此文件夹没有可恢复的会话，请新建会话。",
+  "error.resumeUnsupported": "此智能体不支持恢复会话，请新建会话。",
+  "error.startup": "智能体启动失败。请检查可执行文件、适配器及 PATH，然后重新连接。",
   "badge.acpClient": "ACP 客户端",
   "header.taglineBefore":
     "ACP 宿主：启动时恢复上次文件夹；在 Agents 列表切换 Grok / Codex / Claude / Copilot（各家历史互不混用）。通过宿主 API 连接、流式一轮、Ask 审批工具，并用 ",
