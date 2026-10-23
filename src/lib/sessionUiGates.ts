@@ -48,8 +48,12 @@ export function draftEnterShouldSend(
   permissionOpen: boolean,
   key: string,
   shiftKey: boolean,
+  isComposing = false,
+  keyCode = 0,
 ): boolean {
-  if (permissionOpen) return false;
+  // WebKit may report composition's final Enter as keyCode 229 even when
+  // isComposing has already changed to false.
+  if (permissionOpen || isComposing || keyCode === 229) return false;
   return key === "Enter" && !shiftKey;
 }
 

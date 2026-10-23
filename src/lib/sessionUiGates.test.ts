@@ -84,6 +84,11 @@ describe("canSendPrompt / canCancelPrompt", () => {
 });
 
 describe("draftEnterShouldSend", () => {
+  it("does not send while an IME is composing or committing with WebKit keyCode 229", () => {
+    expect(draftEnterShouldSend(false, "Enter", false, true)).toBe(false);
+    expect(draftEnterShouldSend(false, "Enter", false, false, 229)).toBe(false);
+    expect(draftEnterShouldSend(false, "Enter", false, false, 13)).toBe(true);
+  });
   it("Enter sends when Ask closed; ignored while Ask open", () => {
     expect(draftEnterShouldSend(false, "Enter", false)).toBe(true);
     expect(draftEnterShouldSend(true, "Enter", false)).toBe(false);

@@ -136,6 +136,8 @@ Acceptance fixtures in the fake agent: send `fake:usage-limit` for a quota error
 permission requests issued before either decision. Starting the fake binary with
 `--stale-session` creates a session that is deliberately unavailable on Resume.
 These fixtures do not call a vendor API or perform the proposed tool actions.
+For conversation rendering, `fake:stream` emits thought/reply chunks and
+`fake:long-stream` emits 180 lines over several seconds for scroll testing.
 
 Env alternatives:
 

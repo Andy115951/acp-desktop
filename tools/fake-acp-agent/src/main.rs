@@ -151,6 +151,34 @@ async fn main() -> agent_client_protocol::Result<()> {
                 connection.spawn({
                     let connection = connection.clone();
                     async move {
+                        if scenario == "fake:stream" || scenario == "fake:long-stream" {
+                            for text in ["Thinking ", "about the reply."] {
+                                connection.send_notification(SessionNotification::new(
+                                    session_id.clone(),
+                                    SessionUpdate::AgentThoughtChunk(ContentChunk::new(
+                                        ContentBlock::Text(TextContent::new(text)),
+                                    )),
+                                ))?;
+                            }
+                            let chunks = if scenario == "fake:long-stream" {
+                                180
+                            } else {
+                                8
+                            };
+                            for index in 1..=chunks {
+                                connection.send_notification(SessionNotification::new(
+                                    session_id.clone(),
+                                    SessionUpdate::AgentMessageChunk(ContentChunk::new(
+                                        ContentBlock::Text(TextContent::new(format!(
+                                            "Line {index}: streamed text · 中文 🦊\n"
+                                        ))),
+                                    )),
+                                ))?;
+                                tokio::time::sleep(std::time::Duration::from_millis(35)).await;
+                            }
+                            responder.respond(PromptResponse::new(StopReason::EndTurn))?;
+                            return Ok(());
+                        }
                         if scenario == "fake:parallel" {
                             let first = connection.send_request(permission_request(
                                 session_id.clone(),

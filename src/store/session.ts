@@ -21,18 +21,13 @@ import {
   type SessionByCwd,
 } from "../lib/sessionPrefs";
 import { sessionPatchAfterClear } from "../lib/sessionUiGates";
+import { appendStreamLine, sealTranscript, type StreamLine } from "../lib/transcript";
 
 import {
   resumeIdAfterAgentMayHaveFlipped,
   resumeIdForAgent,
   sessionPatchAfterAgentSwitch,
 } from "../lib/agentSwitch";
-
-export type StreamLine = {
-  id: string;
-  kind: string;
-  text: string;
-};
 
 export type PermissionRequest = {
   requestId: number;
@@ -311,12 +306,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         busy: false,
         sessionId: null,
         permission: null,
+        lines: sealTranscript(get().lines),
       });
     }
   },
   send: async () => {
-    const text = get().draft.trim();
-    if (!text) return;
+    const text = get().draft;
+    if (!text.trim()) return;
     // Ask modal owns the turn; never queue a second prompt underneath it.
     if (get().permission || !get().connected || get().busy) return;
     set({
@@ -341,10 +337,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       set({
         busy: false,
         error: e instanceof Error ? e.message : String(e),
+        lines: sealTranscript(get().lines),
       });
     }
   },
   cancel: async () => {
+    set({ lines: sealTranscript(get().lines) });
     // Host cancel_prompt clears the pending Ask oneshot. Do not also call
     // respond_permission here — that would race and surface "no pending".
     if (get().permission) {
@@ -383,17 +381,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const unsubs: UnlistenFn[] = [];
     unsubs.push(
       await listen<{ kind: string; text: string }>("acp://stream", (ev) => {
-        // Functional update avoids lost lines when multiple stream events
-        // arrive back-to-back (e.g. session/load replay + follow-ups).
+        // Functional update preserves back-to-back chunks and replay order.
         set((state) => ({
-          lines: [
-            ...state.lines,
-            {
-              id: `s-${++lineCounter}`,
-              kind: ev.payload.kind,
-              text: ev.payload.text,
-            },
-          ],
+          lines: appendStreamLine(state.lines, {
+            id: `s-${++lineCounter}`,
+            kind: ev.payload.kind,
+            text: ev.payload.text,
+          }),
         }));
       }),
     );
@@ -404,14 +398,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         detail: string;
         options: { id: string; name: string; kind: string }[];
       }>("acp://permission", (ev) => {
-        set({
+        set((state) => ({
+          lines: sealTranscript(state.lines),
           permission: {
             requestId: ev.payload.requestId,
             title: ev.payload.title,
             detail: ev.payload.detail,
             options: ev.payload.options,
           },
-        });
+        }));
       }),
     );
     unsubs.push(
@@ -467,6 +462,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           busy: ev.payload.busy,
           error: statusError,
           loadSessionSupported,
+          ...(!ev.payload.connected || !ev.payload.busy || statusError
+            ? { lines: sealTranscript(get().lines) }
+            : {}),
           // Agent exit / Disconnect via status: drop stale Ask so Allow cannot
           // hit a torn-down oneshot after the modal was left open.
           ...(shouldDismissAskOnDisconnect(ev.payload.connected)
