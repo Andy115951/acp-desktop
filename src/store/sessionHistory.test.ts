@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { readSessionCatalog, rememberSession } from "../lib/sessionCatalog";
+import { editSession, readSessionCatalog, rememberSession } from "../lib/sessionCatalog";
 
 const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(), open: vi.fn(), load: vi.fn(), save: vi.fn(), invalidate: vi.fn(),
+  invoke: vi.fn(), open: vi.fn(), load: vi.fn(), save: vi.fn(), invalidate: vi.fn(), edit: vi.fn(), loadWorkspaces: vi.fn(), visit: vi.fn(),
   get: vi.fn(), set: vi.fn(), persist: vi.fn(), handlers: new Map<string, (event: { payload: unknown }) => void>(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/plugin-store", () => ({ Store: { load: async () => ({ get: 
 vi.mock("@tauri-apps/api/event", () => ({ listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
   mocks.handlers.set(name, handler); return () => mocks.handlers.delete(name);
 } }));
-vi.mock("./sessionRepository", () => ({ loadSessionCatalog: mocks.load, saveKnownSession: mocks.save, markSessionUnavailable: mocks.invalidate }));
+vi.mock("./sessionRepository", () => ({ loadSessionCatalog: mocks.load, saveKnownSession: mocks.save, markSessionUnavailable: mocks.invalidate, editKnownSession: mocks.edit, loadWorkspaceHistory: mocks.loadWorkspaces, saveWorkspaceVisit: mocks.visit }));
 import { useAgentsStore } from "./agents";
 import { useSessionStore } from "./session";
 
@@ -26,12 +26,15 @@ beforeEach(async () => {
   mocks.load.mockResolvedValue(catalog);
   mocks.save.mockResolvedValue(catalog);
   mocks.invalidate.mockResolvedValue(catalog);
+  mocks.edit.mockImplementation(async (_agent, cwd, id, change) => editSession(catalog, cwd, id, change));
+  mocks.loadWorkspaces.mockResolvedValue({ version: 1, workspaces: [{ cwd: "/workspace", lastOpenedAt: 0 }] });
+  mocks.visit.mockImplementation(async (cwd) => ({ version: 1, workspaces: [{ cwd, lastOpenedAt: 1 }, { cwd: "/workspace", lastOpenedAt: 0 }] }));
   mocks.get.mockResolvedValue("/workspace");
   mocks.set.mockResolvedValue(undefined);
   mocks.persist.mockResolvedValue(undefined);
   useAgentsStore.setState({ selectedAgentId: "codex" });
   useSessionStore.setState({ cwd: "/workspace", catalog, connected: false, busy: false, switching: false,
-    catalogError: false, permission: null, savedSessionId: "second", sessionId: null, error: null, loadSessionSupported: null,
+    catalogError: false, recentWorkspaces: [], workspaceError: false, permission: null, savedSessionId: "second", sessionId: null, error: null, loadSessionSupported: null,
     lines: [{ id: "old", kind: "agent_message", text: "old transcript" }], draft: "old draft" });
 });
 
@@ -50,6 +53,12 @@ describe("app-known session selection", () => {
       await useSessionStore.getState().pickFolder();
       expect(useSessionStore.getState().savedSessionId).toBe("second");
       expect(mocks.open).not.toHaveBeenCalled();
+      await useSessionStore.getState().selectWorkspace("/other");
+      expect(useSessionStore.getState().cwd).toBe("/workspace");
+      expect(await useSessionStore.getState().renameSavedSession("New title")).toBe(false);
+      expect(await useSessionStore.getState().archiveSavedSession()).toBe(false);
+      expect(await useSessionStore.getState().restoreSavedSession("first")).toBe(false);
+      expect(mocks.edit).not.toHaveBeenCalled();
     });
   it("rejects IDs from a different workspace or unavailable entries", () => {
     useSessionStore.setState({ catalog: { version: 1, sessions: [
@@ -67,6 +76,72 @@ describe("app-known session selection", () => {
     expect(mocks.invalidate).toHaveBeenCalledWith("codex", "/workspace", "first");
     expect(useSessionStore.getState().catalog.sessions.find((entry) => entry.sessionId === "second")?.unavailable).toBe(false);
     expect(useSessionStore.getState().savedSessionId).toBeNull();
+  });
+});
+
+describe("workspace and session management", () => {
+  it("switches folders using only that agent/workspace's saved IDs and clears the old view", async () => {
+    const other = rememberSession(catalog, "/other", "other-id", 20);
+    mocks.load.mockResolvedValueOnce(other);
+    await useSessionStore.getState().selectWorkspace("/other");
+    expect(useSessionStore.getState()).toMatchObject({ cwd: "/other", savedSessionId: "other-id", lines: [], draft: "", switching: false });
+    expect(mocks.visit).toHaveBeenCalledWith("/other");
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+  it("opens a new workspace even if saving the shortcut fails, with a visible warning", async () => {
+    mocks.visit.mockRejectedValueOnce(new Error("disk full"));
+    await useSessionStore.getState().selectWorkspace("/new");
+    expect(useSessionStore.getState()).toMatchObject({ cwd: "/new", savedSessionId: null, workspaceError: true, switching: false });
+    expect(useSessionStore.getState().recentWorkspaces[0].cwd).toBe("/new");
+  });
+  it("ignores a pending folder dialog if the agent changed in the meantime", async () => {
+    let finish!: (folder: string) => void;
+    mocks.open.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const picking = useSessionStore.getState().pickFolder();
+    useAgentsStore.setState({ selectedAgentId: "copilot" });
+    await useSessionStore.getState().reloadForAgent("copilot");
+    finish("/other"); await picking;
+    expect(useSessionStore.getState().cwd).toBe("/workspace");
+    expect(mocks.visit).not.toHaveBeenCalled();
+  });
+  it("preserves transcript/draft on rename and keeps the same Resume ID", async () => {
+    const lines = useSessionStore.getState().lines;
+    expect(await useSessionStore.getState().renameSavedSession("  中文 session  ")).toBe(true);
+    expect(useSessionStore.getState()).toMatchObject({ savedSessionId: "second", draft: "old draft" });
+    expect(useSessionStore.getState().lines).toBe(lines);
+    expect(useSessionStore.getState().catalog.sessions[0].title).toBe("中文 session");
+  });
+  it("archives the selected entry and chooses the next available Resume without deleting any vendor data", async () => {
+    expect(await useSessionStore.getState().archiveSavedSession()).toBe(true);
+    expect(useSessionStore.getState()).toMatchObject({ savedSessionId: "first", lines: [], draft: "" });
+    expect(useSessionStore.getState().catalog.sessions.find((entry) => entry.sessionId === "second")?.archivedAt).toBeTypeOf("number");
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+  it("leaves New session available when the final entry is archived", async () => {
+    const single = readSessionCatalog(null, { "/workspace": "second" });
+    useSessionStore.setState({ catalog: single });
+    mocks.edit.mockResolvedValueOnce(editSession(single, "/workspace", "second", { archivedAt: 1 }));
+    await useSessionStore.getState().archiveSavedSession();
+    expect(useSessionStore.getState().savedSessionId).toBeNull();
+    await useSessionStore.getState().connect("new");
+    expect(mocks.invoke).toHaveBeenCalledWith("connect_agent", expect.objectContaining({ resumeSessionId: null }));
+  });
+  it("restores an archived entry and selects it for Resume without connecting", async () => {
+    useSessionStore.setState({ catalog: editSession(catalog, "/workspace", "first", { archivedAt: 1 }) });
+    expect(await useSessionStore.getState().restoreSavedSession("first")).toBe(true);
+    expect(useSessionStore.getState()).toMatchObject({ savedSessionId: "first", lines: [], draft: "" });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+  it("retains the current entry on failed archive and blocks Connect during the edit", async () => {
+    let fail!: (error: Error) => void;
+    mocks.edit.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+    const archiving = useSessionStore.getState().archiveSavedSession();
+    await useSessionStore.getState().connect("new");
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    fail(new Error("disk full"));
+    expect(await archiving).toBe(false);
+    expect(useSessionStore.getState()).toMatchObject({ savedSessionId: "second", catalogError: true, switching: false });
+    expect(useSessionStore.getState().catalog).toBe(catalog);
   });
 });
 

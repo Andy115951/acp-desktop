@@ -20,8 +20,10 @@ import { sessionPatchAfterClear } from "../lib/sessionUiGates";
 import { appendStreamLine, sealTranscript, recordToolDecision, type StreamLine, type ToolData } from "../lib/transcript";
 
 import { sessionPatchAfterAgentSwitch } from "../lib/agentSwitch";
-import { invalidateSession, rememberSession, sessionsForWorkspace, type SessionCatalog } from "../lib/sessionCatalog";
-import { loadSessionCatalog, markSessionUnavailable, saveKnownSession } from "./sessionRepository";
+import { invalidateSession, rememberSession, sessionsForWorkspace, validSessionTitle, type SessionCatalog } from "../lib/sessionCatalog";
+import { editKnownSession, loadSessionCatalog, loadWorkspaceHistory, markSessionUnavailable, saveKnownSession, saveWorkspaceVisit } from "./sessionRepository";
+
+import { visitWorkspace, type RecentWorkspace } from "../lib/workspaceHistory";
 
 const emptyCatalog = (): SessionCatalog => ({ version: 1, sessions: [] });
 
@@ -58,16 +60,6 @@ function currentAgentId(): string {
   return useAgentsStore.getState().selectedAgentId || "grok";
 }
 
-async function saveLastCwd(cwd: string): Promise<void> {
-  try {
-    const store = await getPrefsStore();
-    await store.set(PREFS_KEY_LAST_CWD, cwd);
-    await store.save();
-  } catch {
-    // Prefs are best-effort.
-  }
-}
-
 async function loadLastCwd(): Promise<string | null> {
   try {
     const store = await getPrefsStore();
@@ -82,6 +74,12 @@ type SessionState = {
   cwd: string | null;
   catalog: SessionCatalog;
   catalogError: boolean;
+  recentWorkspaces: RecentWorkspace[];
+  workspaceError: boolean;
+  selectWorkspace: (cwd: string) => Promise<void>;
+  renameSavedSession: (title: string) => Promise<boolean>;
+  archiveSavedSession: () => Promise<boolean>;
+  restoreSavedSession: (sessionId: string) => Promise<boolean>;
   switching: boolean;
   selectSavedSession: (sessionId: string) => void;
   connected: boolean;
@@ -112,10 +110,73 @@ let contextGeneration = 0;
 let connectionAgentId: string | null = null;
 let catalogRevision = 0;
 
+type CatalogEdit = { type: "rename"; title: string } | { type: "archive" } | { type: "restore"; sessionId: string };
+
+async function editSavedEntry(action: CatalogEdit): Promise<boolean> {
+  const state = useSessionStore.getState();
+  if (state.connected || state.busy || state.permission || state.switching || !state.cwd) return false;
+  const sessionId = action.type === "restore" ? action.sessionId : state.savedSessionId;
+  const entry = state.catalog.sessions.find((item) => item.cwd === state.cwd && item.sessionId === sessionId);
+  if (!entry || (action.type === "restore" ? entry.archivedAt == null : entry.archivedAt != null || entry.unavailable)) return false;
+  if (action.type === "rename" && !validSessionTitle(action.title)) return false;
+  const agentId = currentAgentId();
+  const generation = ++contextGeneration;
+  ++catalogRevision;
+  useSessionStore.setState({ switching: true });
+  try {
+    const change = action.type === "rename" ? { title: action.title }
+      : { archivedAt: action.type === "archive" ? Date.now() : null };
+    const catalog = await editKnownSession(agentId, state.cwd, entry.sessionId, change);
+    if (generation !== contextGeneration || currentAgentId() !== agentId || useSessionStore.getState().cwd !== state.cwd) return false;
+    const savedSessionId = action.type === "archive" ? sessionsForWorkspace(catalog, state.cwd)[0]?.sessionId ?? null
+      : action.type === "restore" && !entry.unavailable ? entry.sessionId : state.savedSessionId;
+    useSessionStore.setState({ catalog, catalogError: false, savedSessionId,
+      ...(savedSessionId !== state.savedSessionId ? { lines: [], draft: "", error: null, sessionId: null } : {}) });
+    return true;
+  } catch {
+    if (generation === contextGeneration) useSessionStore.setState({ catalogError: true });
+    return false;
+  } finally {
+    if (generation === contextGeneration) useSessionStore.setState({ switching: false });
+  }
+}
+
+async function loadRecentWorkspaces() {
+  try { return { recentWorkspaces: (await loadWorkspaceHistory()).workspaces, workspaceError: false }; }
+  catch { return { recentWorkspaces: [], workspaceError: true }; }
+}
+
 export const useSessionStore = create<SessionState>((set, get) => ({
   cwd: null,
   catalog: emptyCatalog(),
   catalogError: false,
+  recentWorkspaces: [],
+  workspaceError: false,
+  renameSavedSession: (title) => editSavedEntry({ type: "rename", title }),
+  archiveSavedSession: () => editSavedEntry({ type: "archive" }),
+  restoreSavedSession: (sessionId) => editSavedEntry({ type: "restore", sessionId }),
+  selectWorkspace: async (cwd) => {
+    if (get().connected || get().busy || get().permission || get().switching || !isPlausibleCwd(cwd)) return;
+    const generation = ++contextGeneration;
+    const agentId = currentAgentId();
+    set({ switching: true });
+    try {
+      const context = await loadCatalogContext(agentId, cwd);
+      if (generation !== contextGeneration || currentAgentId() !== agentId) return;
+      let recentWorkspaces: RecentWorkspace[];
+      let workspaceError = false;
+      try { recentWorkspaces = (await saveWorkspaceVisit(cwd)).workspaces; }
+      catch {
+        recentWorkspaces = visitWorkspace({ version: 1, workspaces: get().recentWorkspaces }, cwd, Date.now()).workspaces;
+        workspaceError = true;
+      }
+      if (generation !== contextGeneration || currentAgentId() !== agentId) return;
+      set({ ...context, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null,
+        loadSessionSupported: null, lines: [], permission: null, draft: "" });
+    } finally {
+      if (generation === contextGeneration) set({ switching: false });
+    }
+  },
   switching: false,
   selectSavedSession: (sessionId) => {
     const state = get();
@@ -139,18 +200,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const generation = ++contextGeneration;
     const agentId = currentAgentId();
     set({ switching: true });
-    try {
-      const selected = await open({ directory: true, multiple: false });
-      if (typeof selected !== "string") return;
-      const context = await loadCatalogContext(agentId, selected);
-      if (generation !== contextGeneration || currentAgentId() !== agentId) return;
-      set({ ...context, cwd: selected, error: null, sessionId: null,
-        loadSessionSupported: null, lines: [], permission: null, draft: "" });
-      await saveLastCwd(selected);
-    } catch (error) {
+    let selected: string | string[] | null = null;
+    try { selected = await open({ directory: true, multiple: false }); }
+    catch (error) {
       if (generation === contextGeneration) set({ error: String(error) });
     } finally {
       if (generation === contextGeneration) set({ switching: false });
+    }
+    if (generation === contextGeneration && currentAgentId() === agentId && typeof selected === "string") {
+      await get().selectWorkspace(selected);
     }
   },
   hydrateFromPrefs: async () => {
@@ -158,7 +216,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const generation = ++contextGeneration;
     set({ switching: true });
     try {
-      const lastCwd = await loadLastCwd();
+      const [lastCwd, workspaces] = await Promise.all([loadLastCwd(), loadRecentWorkspaces()]);
       if (generation !== contextGeneration) return;
       // Initial agent detection can finish during prefs I/O. Retry the read
       // for the current agent without mixing either vendor's metadata.
@@ -167,7 +225,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const context = await loadCatalogContext(agentId, lastCwd);
         if (generation !== contextGeneration) return;
         if (currentAgentId() !== agentId) continue;
-        set({ ...context, cwd: lastCwd, error: null });
+        set({ ...context, ...workspaces, cwd: lastCwd, error: null });
         break;
       }
     } finally {

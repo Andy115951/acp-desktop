@@ -3,6 +3,7 @@ import { PermissionCard } from "./PermissionCard";
 import { ErrorNotice } from "./ErrorNotice";
 import { ChatTranscript } from "./ChatTranscript";
 import { SessionHistory } from "./SessionHistory";
+import { WorkspacePicker } from "./WorkspacePicker";
 import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
@@ -36,6 +37,12 @@ export default function App() {
     catalogError,
     switching,
     selectSavedSession,
+    recentWorkspaces,
+    workspaceError,
+    selectWorkspace,
+    renameSavedSession,
+    archiveSavedSession,
+    restoreSavedSession,
     connected,
     busy,
     error,
@@ -209,7 +216,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => void refresh()}
-              disabled={loading}
+              disabled={loading || switching}
               className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:border-slate-500 disabled:opacity-50"
             >
               {loading
@@ -369,9 +376,13 @@ export default function App() {
             {t(locale, "session.clear")}
           </button>
         </div>
+        <WorkspacePicker cwd={cwd} workspaces={recentWorkspaces} failed={workspaceError}
+          disabled={connected || busy || !!permission || switching} locale={locale}
+          onSelect={(path) => void selectWorkspace(path)} />
         <SessionHistory catalog={catalog} cwd={cwd} savedSessionId={savedSessionId}
           disabled={connected || busy || !!permission || switching} failed={catalogError}
-          locale={locale} onSelect={selectSavedSession} />
+          locale={locale} onSelect={selectSavedSession} onRename={renameSavedSession}
+          onArchive={archiveSavedSession} onRestore={restoreSavedSession} />
         <p className="text-xs text-slate-500 break-all">
           {t(locale, "session.cwd")}: {cwd ?? "—"}{" "}
           {sessionId

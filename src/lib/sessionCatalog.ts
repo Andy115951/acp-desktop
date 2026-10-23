@@ -8,6 +8,7 @@ export type SessionEntry = {
   createdAt: number;
   updatedAt: number;
   unavailable: boolean;
+  archivedAt?: number | null;
 };
 
 export type SessionCatalog = { version: 1; sessions: SessionEntry[] };
@@ -45,16 +46,18 @@ export function readSessionCatalog(value: unknown, legacy: unknown): SessionCata
     if (!item || !isPlausibleCwd(item.cwd) || !validId(item.sessionId) ||
         !validTime(item.createdAt) || !validTime(item.updatedAt) ||
         !(item.title === null || typeof item.title === "string") ||
+        (item.archivedAt != null && !validTime(item.archivedAt)) ||
         typeof item.unavailable !== "boolean") continue;
     if (sessions.some((entry) => entry.cwd === item.cwd && entry.sessionId === item.sessionId)) continue;
     sessions.push({ cwd: item.cwd, sessionId: item.sessionId, title: item.title,
-      createdAt: item.createdAt, updatedAt: item.updatedAt, unavailable: item.unavailable });
+      createdAt: item.createdAt, updatedAt: item.updatedAt, unavailable: item.unavailable,
+      ...(validTime(item.archivedAt) ? { archivedAt: item.archivedAt } : {}) });
   }
   return { version: 1, sessions };
 }
 
 export function sessionsForWorkspace(catalog: SessionCatalog, cwd: string): SessionEntry[] {
-  return catalog.sessions.filter((entry) => entry.cwd === cwd && !entry.unavailable)
+  return catalog.sessions.filter((entry) => entry.cwd === cwd && !entry.unavailable && entry.archivedAt == null)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
@@ -69,4 +72,22 @@ export function rememberSession(catalog: SessionCatalog, cwd: string, sessionId:
 export function invalidateSession(catalog: SessionCatalog, cwd: string, sessionId: string): SessionCatalog {
   return { version: 1, sessions: catalog.sessions.map((entry) =>
     entry.cwd === cwd && entry.sessionId === sessionId ? { ...entry, unavailable: true } : entry) };
+}
+
+export const SESSION_TITLE_LIMIT = 120;
+
+export function validSessionTitle(title: string): boolean {
+  return title.trim().length > 0 && title.trim().length <= SESSION_TITLE_LIMIT && !/[\x00-\x1f]/.test(title);
+}
+
+/** Metadata edits never change last-used time or revive an unavailable ID. */
+export function editSession(catalog: SessionCatalog, cwd: string, sessionId: string,
+  change: { title: string } | { archivedAt: number | null }): SessionCatalog {
+  if (!catalog.sessions.some((entry) => entry.cwd === cwd && entry.sessionId === sessionId)) {
+    throw new Error("Unknown app session");
+  }
+  if ("title" in change && !validSessionTitle(change.title)) throw new Error("Invalid session title");
+  const patch = "title" in change ? { title: change.title.trim() } : change;
+  return { version: 1, sessions: catalog.sessions.map((entry) =>
+    entry.cwd === cwd && entry.sessionId === sessionId ? { ...entry, ...patch } : entry) };
 }
