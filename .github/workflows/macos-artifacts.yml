@@ -1,0 +1,50 @@
+name: macOS artifacts
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: macOS arm64 app archive
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CI: 'true'
+      APPLE_SIGNING_IDENTITY: '-'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+      - name: Install project Rust toolchain
+        run: rustup toolchain install 1.90 --profile minimal --target aarch64-apple-darwin
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Validate artifact audit regressions
+        run: node --test scripts/package-macos.test.mjs
+      - name: Build ad-hoc signed application (no window activation)
+        run: npm run tauri -- build --target aarch64-apple-darwin --bundles app -- --locked
+      - name: Audit and archive application
+        run: node scripts/package-macos.mjs
+      - name: Upload candidate artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: acp-desktop-macos-arm64-${{ github.sha }}
+          path: release-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
