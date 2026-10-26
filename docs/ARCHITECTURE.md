@@ -93,16 +93,14 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 - Linux `tauri:fake` can hydrate `selectedAgentId` + `lastCwd` from prefs to smoke Switch→Codex/Claude/Copilot without Mac GUI (per-vendor Resume). Scripted WebKit clicks under Xvfb are unreliable (no AT-SPI); full Connect/Ask/Resume click path remains Mac UI E2E.
 - Host `drain_load_replay` waits up to 2s for the first ActiveSession update then 250ms idle. Automated: `cargo test -p fake-acp-agent` + `cargo test -p acp-desktop` + `tsc` + vitest; GitHub Actions CI runs these on push/PR. Does not replace Mac UI E2E for permission cards / Resume.
 
-## Deferred
+## Verification and distribution
 
-- Mac UI E2E for real Codex / Claude / Copilot Connect/Ask/Resume — waived as merge/dev blocker (manual when useful)
-- Packaging / notarization / auto-update — M5 first slice: macOS `app`+`dmg` bundle metadata, entitlements + Info.plist placeholders, empty `resources`/`externalBin` (no vendor CLIs). See [PACKAGING.md](PACKAGING.md). Notarization / auto-update still deferred.
-
-## Done (recent)
-
-- Permission card placement: inline in the chat transcript (no full-viewport modal)
-- UI language (`en` / `zh-CN`): tiny dictionary + header toggle; prefs key `ui.locale` (chrome only; no agent transcript / protocol translation)
-- CopilotBackend (M8): detect `copilot`, spawn `copilot --acp`, Agents list + per-vendor `copilot.sessionByCwd`
+The [compatibility matrix](COMPATIBILITY.md) distinguishes real-agent checks from
+fixtures and external blockers. Native acceptance must be recorded for the
+relevant change; the early milestone UI waivers are not blanket release approval.
+[PACKAGING.md](PACKAGING.md) describes audited macOS arm64 candidate archives,
+ad-hoc signing and pending fresh-user installation. Notarization and auto-update
+are not implemented by that pipeline.
 
 ### Custom launch profiles
 

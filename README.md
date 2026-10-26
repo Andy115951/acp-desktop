@@ -43,7 +43,11 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 ## Status
 
-M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://github.com/Andy115951/acp-desktop/pull/8)): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences (`tauri-plugin-store`) keep lightweight per-agent session metadata and the last workspace folder (no chat history locally).
+The core conversation, workspace/session and custom-agent features are implemented.
+The first public beta is in preparation under [M12 #35](https://github.com/Andy115951/acp-desktop/issues/35).
+CI produces macOS arm64 candidates; fresh-user installation and publication remain
+open. See the [tested compatibility matrix](docs/COMPATIBILITY.md),
+[troubleshooting guide](docs/TROUBLESHOOTING.md) and [unreleased beta notes](docs/BETA_RELEASE_NOTES.md).
 
 **Startup:** the window opens without requesting initial focus. On macOS, launching while another app is active leaves that app active; click ACP Desktop when you are ready to use it.
 
@@ -53,32 +57,31 @@ M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://
 
 **Saved sessions:** after Disconnect, choose an app-known session for the current agent/workspace and click Resume. New session keeps the earlier entries, and relaunch restores the most recently used session as the default. Existing cwd→sessionId preferences migrate automatically. Workspace/session selection is disabled until you disconnect; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. Use Recent workspaces to return to a previously opened folder. Rename changes only the app title; Archive app entry hides a record without deleting vendor history, and Archived sessions lets you restore it. These actions require a disconnected, idle session. Connect and Resume also discover vendor sessions when the agent advertises `sessionCapabilities.list`, following pagination for the selected workspace. Unsupported agents keep the app-known list. Discovery errors, repeated cursors or safety limits show an incomplete notice and keep existing entries usable (10 seconds total, up to 20 pages / 2,000 entries per connection). Local names, archives and stale-entry decisions are preserved.
 
-Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` / `cargo test -p acp-desktop` + Vitest/`tsc` (CI on push/PR) cover `session/request_permission` allow/deny and `loadSession` replay without Grok. Host deadline-drains `session/load` ActiveSession replay so Resume does not miss `fake-agent: resumed`.
+## Quickstart
 
-Issue [#3](https://github.com/Andy115951/acp-desktop/issues/3) is **closed** (M2 Done on the [project board](https://github.com/users/Andy115951/projects/2)). Optional polish [#9](https://github.com/Andy115951/acp-desktop/pull/9) (last workspace folder prefs) is merged to `main`.
-
-**Done on main:** [#4](https://github.com/Andy115951/acp-desktop/issues/4) M3 `AgentBackend` (`GrokBackend` + `connect_agent`).
-
-**Done on main:** [#5](https://github.com/Andy115951/acp-desktop/issues/5) M4 — Codex via `@agentclientprotocol/codex-acp`, Agents list + Switch dropdown, per-vendor session prefs (`{agentId}.sessionByCwd`) (merged [#12](https://github.com/Andy115951/acp-desktop/pull/12); Mac UI E2E waived).
-
-**Done on main:** [#6](https://github.com/Andy115951/acp-desktop/issues/6) M5 macOS packaging (`tauri build` → `.app` / `.dmg`; no vendor CLIs in the bundle). See [docs/PACKAGING.md](docs/PACKAGING.md).
-
-**Done on main:** [#14](https://github.com/Andy115951/acp-desktop/issues/14) M6 Claude via `@agentclientprotocol/claude-agent-acp` (merged [#15](https://github.com/Andy115951/acp-desktop/pull/15) as `ae0df18`) — detect `claude-agent-acp` **or** `claude`, spawn binary or `npx -y`, Agents list selectable, per-vendor session prefs.
-
-**Done on main:** [#17](https://github.com/Andy115951/acp-desktop/issues/17) M7 UI language (`en` / `zh-CN`) — header locale toggle, `tauri-plugin-store` key `ui.locale`, chrome strings in `App.tsx` + `PermissionCard.tsx` (merged [#18](https://github.com/Andy115951/acp-desktop/pull/18) as `718de50`).
-
-**Done on main:** [#19](https://github.com/Andy115951/acp-desktop/issues/19) M8 Copilot via `copilot --acp` (merged [#20](https://github.com/Andy115951/acp-desktop/pull/20) as `7ca85e7`) — detect `copilot` on PATH, Agents list selectable, per-vendor session prefs (`copilot.sessionByCwd`).
-
-Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2) (issues #2–#6 + #14 + #17 + #19 Done).
+1. Install and log in to your intended agent CLI independently. Check the
+   [tested versions and limitations](docs/COMPATIBILITY.md), including the open
+   Claude acceptance blocker.
+2. For development, follow [CONTRIBUTING.md](CONTRIBUTING.md) and start the app
+   from source. Candidate archive trust and installation status are documented in
+   [PACKAGING.md](docs/PACKAGING.md); no public beta install is certified yet.
+3. Click the app window, choose a folder and agent, then Connect. Send a prompt
+   and decide any requested permissions explicitly. Disconnect before changing
+   agent/workspace; Resume loads a selected saved session when supported.
 
 ## Develop
 
-Prerequisites: [Node.js](https://nodejs.org/) 22.12+ (or a supported newer LTS), [Rust](https://rustup.rs/) 1.90+, and OS webview deps ([Tauri prerequisites](https://tauri.app/start/prerequisites/) — on macOS that means Xcode CLT / WebKit).
+Prerequisites: [Node.js](https://nodejs.org/) 22.23.4 for candidate parity, [Rust](https://rustup.rs/) 1.90 (pinned in `rust-toolchain.toml`), and OS webview deps ([Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) — on macOS that means Xcode CLT / WebKit).
 
 ```bash
-npm install
+npm ci
 npm run tauri dev
 ```
+
+The optional real-agent smoke scripts below use your account, can consume quota,
+and automatically answer permission requests. Read the
+[real-agent testing guidance](CONTRIBUTING.md#optional-real-agent-checks) before
+running them. They are separate from the deterministic fake-agent tests.
 
 ### Codex ACP headless Connect/Ask/Resume (Mac)
 
@@ -218,7 +221,7 @@ Release. See [packaging and candidate verification](docs/PACKAGING.md).
 Build a local `.app` / `.dmg` without bundling vendor CLIs:
 
 ```bash
-npm install
+npm ci
 npm run tauri:build:macos
 ```
 
@@ -226,17 +229,12 @@ Artifacts: `target/release/bundle/macos/` and `.../dmg/`. Signing & notarization
 
 ## Roadmap
 
-Upcoming M9–M12 plans and acceptance evidence live in the
-[GitHub Project](https://github.com/users/Andy115951/projects/2).
-
-1. **Tauri skeleton + Grok detect** — done (M1 / [#2](https://github.com/Andy115951/acp-desktop/issues/2))
-2. **Grok ACP path** — done (M2 / [#3](https://github.com/Andy115951/acp-desktop/issues/3), [#8](https://github.com/Andy115951/acp-desktop/pull/8) + [#9](https://github.com/Andy115951/acp-desktop/pull/9))
-3. **AgentBackend** — done (M3 / [#4](https://github.com/Andy115951/acp-desktop/issues/4), [#11](https://github.com/Andy115951/acp-desktop/pull/11))
-4. **Multi-agent switch** — done (M4 / [#5](https://github.com/Andy115951/acp-desktop/issues/5), [#12](https://github.com/Andy115951/acp-desktop/pull/12))
-5. **macOS packaging** — done (M5 / [#6](https://github.com/Andy115951/acp-desktop/issues/6)); see [docs/PACKAGING.md](docs/PACKAGING.md)
-6. **Claude backend** — done (M6 / [#14](https://github.com/Andy115951/acp-desktop/issues/14), [#15](https://github.com/Andy115951/acp-desktop/pull/15))
-7. **UI language** — done (M7 / [#17](https://github.com/Andy115951/acp-desktop/issues/17), [#18](https://github.com/Andy115951/acp-desktop/pull/18)): `en` / `zh-CN` chrome locale
-8. **Copilot backend** — done (M8 / [#19](https://github.com/Andy115951/acp-desktop/issues/19), [#20](https://github.com/Andy115951/acp-desktop/pull/20) as `7ca85e7`): `copilot --acp`
+Scope and acceptance evidence live in the [GitHub Project](https://github.com/users/Andy115951/projects/2)
+and public milestone issues. [M9](https://github.com/Andy115951/acp-desktop/issues/32),
+[M10](https://github.com/Andy115951/acp-desktop/issues/33) and
+[M11](https://github.com/Andy115951/acp-desktop/issues/34) are complete.
+[M12](https://github.com/Andy115951/acp-desktop/issues/35) covers the first public
+beta and contribution readiness; its installation/publication gates remain open.
 
 ## Tech notes
 
@@ -248,10 +246,12 @@ Upcoming M9–M12 plans and acceptance evidence live in the
 - Preferences: `tauri-plugin-store` (last folder / selected agent / `ui.locale` / per-agent session metadata); no local transcript database
 - First agent: **Grok Build** via `grok agent stdio`
 
-### Still open
+### Verification and distribution limits
 
-- Mac UI E2E for real Codex / Claude / Copilot Connect / Ask / Resume — **waived** as a merge/dev blocker (headless `smoke:codex-acp` / `smoke:claude-acp` / `smoke:copilot-acp` + fake-agent CI remain)
-- Packaging notarization / auto-update (needs Apple Developer ID; see [docs/PACKAGING.md](docs/PACKAGING.md))
+Real-agent and platform claims are bounded by the [compatibility matrix](docs/COMPATIBILITY.md).
+Claude's real Ask/Resume acceptance remains externally blocked. Candidate
+installation, final beta versioning and publication are still pending. Signing,
+notarization and auto-update are not claimed by the ad-hoc candidate pipeline.
 
 ## Non-goals
 
