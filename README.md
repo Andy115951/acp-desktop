@@ -4,7 +4,7 @@ Unofficial desktop **ACP client**: one window to switch the local coding-agent C
 
 **Not affiliated with, endorsed by, or a product of xAI, OpenAI, Anthropic, or any other vendor.** Their names and marks belong to them. This repo does not ship vendor CLIs, installers, or credentials.
 
-各家 CLI 你自己装、自己登录。本应用只拉起它们的 ACP stdio（例如 `grok agent stdio`、`codex-acp`、`claude-agent-acp`、`copilot --acp`）。会话仍在各家自己的目录里，能和原 TUI 接着聊。改文件、跑命令默认要你点头。
+Install and sign in to each CLI yourself. This app starts its ACP stdio endpoint (for example `grok agent stdio`, `codex-acp`, `claude-agent-acp` or `copilot --acp`). Conversations stay in vendor-owned storage. Agent permission requests are shown for your approval.
 
 ## What it is
 
@@ -208,16 +208,21 @@ profile always launches its own executable. The older `ACP_DESKTOP_AGENT_CMD`
 development override splits on whitespace; use a custom profile for paths or
 arguments with spaces.
 
-## Build / release (macOS, M5)
+## macOS builds and beta preparation
 
-Ship a local `.app` / `.dmg` without bundling vendor CLIs:
+The **macOS artifacts** workflow prepares audited Apple Silicon `.app.zip` candidates
+with checksums and build manifests. These are ad-hoc signed, not notarized, and
+not yet certified by a fresh-user installation check. It does not publish a
+Release. See [packaging and candidate verification](docs/PACKAGING.md).
+
+Build a local `.app` / `.dmg` without bundling vendor CLIs:
 
 ```bash
 npm install
 npm run tauri:build:macos
 ```
 
-Artifacts: `src-tauri/target/release/bundle/macos/` and `.../dmg/`. Signing & notarization stay optional (set `APPLE_SIGNING_IDENTITY` when you have a Developer ID cert). Details: [docs/PACKAGING.md](docs/PACKAGING.md).
+Artifacts: `target/release/bundle/macos/` and `.../dmg/`. Signing & notarization stay optional (set `APPLE_SIGNING_IDENTITY` when you have a Developer ID cert). Details: [docs/PACKAGING.md](docs/PACKAGING.md).
 
 ## Roadmap
 
