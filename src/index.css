@@ -56,7 +56,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
 .chat-sidebar[hidden] { display: none; }
 .sidebar-brand { height: 74px; flex-shrink: 0; padding: 0 18px; display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; letter-spacing: -.02em; }
 .brand-mark { width: 28px; height: 28px; display: grid; place-items: center; color: #b2d6c4; background: #24372f; border: 1px solid #91bea522; border-radius: 9px; }
-.sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 14px 22px; scrollbar-width: thin; }
+.sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 14px 22px; scrollbar-width: thin; }
 .new-chat-button { width: 100%; border-radius: 9px; border: 1px solid #ffffff17; background: #24272c; padding: 11px 12px; display: flex; gap: 10px; align-items: center; font-size: 13px; color: #e3e6e9; text-align: left; }
 .new-chat-button:hover:not(:disabled) { background: #30343a; }
 .new-chat-button:disabled { color: #707780; background: #1b1d21; }
@@ -148,7 +148,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
   .composer-dock { padding: 8px 20px 12px; }
   .connection-toolbar { padding: 8px 20px; }
 }
-@media (max-width: 600px) {
+@media (max-width: 760px) {
   .chat-shell[data-sidebar-open="true"] .chat-sidebar { width: 100%; flex-basis: 100%; }
   .chat-shell[data-sidebar-open="true"] .conversation-pane { display: none; }
   .conversation-header { min-height: 64px; padding: 10px 14px; }
@@ -172,3 +172,8 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
 .history-help { font-size: 10px; color: #7f8a97; padding-top: 10px; line-height: 1.6; }
 .history-help summary { cursor: pointer; }
 .history-help p { margin-top: 6px; }
+
+.sidebar-details li button > div { min-width: 0; flex: 1; }
+.sidebar-details li button > span { flex-shrink: 0; }
+.sidebar-details li button span, .sidebar-details li button code { overflow-wrap: anywhere; }
+.sidebar-details li button > div > div { flex-wrap: wrap; }
