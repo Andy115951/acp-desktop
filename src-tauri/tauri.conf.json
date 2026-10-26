@@ -13,9 +13,11 @@
     "windows": [
       {
         "title": "ACP Desktop",
-        "width": 720,
-        "height": 520,
-        "focus": false
+        "width": 1120,
+        "height": 780,
+        "focus": false,
+        "minWidth": 640,
+        "minHeight": 480
       }
     ],
     "security": {

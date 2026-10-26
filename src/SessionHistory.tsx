@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { SESSION_TITLE_LIMIT, sessionsForWorkspace, type SessionCatalog } from "./lib/sessionCatalog";
 import { t, type Locale } from "./lib/i18n";
 
-export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed, locale, onSelect, onRename, onArchive, onRestore, listSupported, listIncomplete }: {
+export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed, locale, onSelect, onRename, onArchive, onRestore, listSupported, listIncomplete, variant = "select" }: {
+  variant?: "select" | "list";
   catalog: SessionCatalog;
   cwd: string | null;
   savedSessionId: string | null;
@@ -24,6 +25,17 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
   useEffect(() => { setEditing(false); setTitle(""); }, [cwd, savedSessionId]);
   return (
     <div className="space-y-1.5">
+      {variant === "list" ? <>
+        <h2 className="sidebar-section-heading">{t(locale, "history.label")}<span className="session-count">{entries.length}</span></h2>
+        {entries.length === 0 ? <p className="history-empty">{t(locale, "history.empty")}</p> : <ul className="session-list">
+          {entries.map(entry => <li key={entry.sessionId}><button type="button" disabled={disabled || editing}
+            aria-current={entry.sessionId === savedSessionId ? "true" : undefined}
+            onClick={() => onSelect(entry.sessionId)} title={entry.title ?? entry.sessionId}>
+            <span className="session-row-title">{entry.title ?? entry.sessionId}</span>
+            {entry.updatedAt > 0 && <time dateTime={new Date(entry.updatedAt).toISOString()}>{new Date(entry.updatedAt).toLocaleDateString(locale, { month: "short", day: "numeric" })}</time>}
+          </button></li>)}
+        </ul>}
+      </> : <>
       <label className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
         {t(locale, "history.label")}
         <select
@@ -42,6 +54,7 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
           ))}
         </select>
       </label>
+      </>}
       {onRename && onArchive ? (
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={disabled || !selected || editing}
@@ -65,7 +78,7 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
             {t(locale, "history.title")}
             <input autoFocus required maxLength={SESSION_TITLE_LIMIT} value={title} disabled={disabled}
               onChange={(event) => setTitle(event.target.value)}
-              className="ml-2 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-white" />
+              className="mt-1 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-white" />
           </label>
           <button type="submit" disabled={disabled || !title.trim()}
             className="rounded-md bg-sky-700 px-2 py-1 text-xs text-white disabled:opacity-40">{t(locale, "history.save")}</button>
@@ -73,7 +86,9 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
             className="text-xs text-slate-400">{t(locale, "history.cancel")}</button>
         </form>
       ) : null}
-      <p className="text-xs text-slate-500">{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>
+      {variant === "list" ? <details className="history-help"><summary>{t(locale, "layout.historyHelp")}</summary>
+        <p>{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>
+      </details> : <p className="text-xs text-slate-500">{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>}
       {listIncomplete ? <p role="status" className="text-xs text-amber-200">{t(locale, "history.listIncomplete")}</p> : null}
       {disabled ? <p className="text-xs text-slate-400">{t(locale, "history.disconnect")}</p> : null}
       {failed ? <p role="alert" className="text-xs text-amber-200">{t(locale, "history.failed")}</p> : null}

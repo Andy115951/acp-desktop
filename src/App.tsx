@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ChatIcon } from "./ChatIcon";
 import { CustomAgents } from "./CustomAgents";
 import { AgentSessionInfo } from "./AgentSessionInfo";
 import { PermissionCard } from "./PermissionCard";
@@ -75,6 +76,15 @@ export default function App() {
   } = useSessionStore();
   const { locale, hydrateLocale, setLocale } = useUiStore();
   const composingRef = useRef(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches);
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+  const previousSidebarOpen = useRef(sidebarOpen);
+  useEffect(() => {
+    if (previousSidebarOpen.current && !sidebarOpen) sidebarToggleRef.current?.focus();
+    previousSidebarOpen.current = sidebarOpen;
+  }, [sidebarOpen]);
+  const closeSidebar = () => setSidebarOpen(false);
 
   useEffect(() => {
     void hydrateLocale();
@@ -169,72 +179,44 @@ export default function App() {
   const canCancel = !configuring && canCancelPrompt(uiGates);
   const authHint = agentAuthHint(selectedAgentId, usingFake, locale);
 
-  return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-8">
-      <header className="space-y-2">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-              {t(locale, "badge.acpClient")}
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight text-white">
-              acp-desktop
-            </h1>
-          </div>
-          <label className="flex items-center gap-1.5 text-xs text-slate-400">
-            {t(locale, "language.label")}
-            <select
-              value={locale}
-              onChange={(e) => setLocale(e.target.value as Locale)}
-              className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
-              aria-label={t(locale, "language.label")}
-            >
-              <option value="en">English</option>
-              <option value="zh-CN">简体中文</option>
-            </select>
-          </label>
-        </div>
-        <p className="text-sm text-slate-400">
-          {t(locale, "header.description")}
-        </p>
-      </header>
+  const selectedEntry = catalog.sessions.find((entry) => entry.cwd === cwd && entry.sessionId === (sessionId ?? savedSessionId));
+  const workspaceName = cwd?.split(/[\\/]/).filter(Boolean).slice(-1)[0];
+  const contextLocked = connected || busy || !!permission || switching || customEditing;
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-slate-200">
-            {t(locale, "agents.title")}
-          </h2>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-slate-400">
-              {t(locale, "agents.switch")}
-              <select
-                value={selectedAgentId}
-                disabled={busy || switching || customEditing}
-                onChange={(e) => selectAgent(e.target.value)}
-                className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
-              >
-                {agents
-                  .filter((a) => a.connectable)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                      {a.available ? "" : t(locale, "agents.missingSuffix")}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => void refresh()}
-              disabled={loading || switching || customEditing}
-              className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:border-slate-500 disabled:opacity-50"
-            >
-              {loading
-                ? t(locale, "agents.checking")
-                : t(locale, "agents.refresh")}
-            </button>
-          </div>
+  return (
+    <main className="chat-shell" data-sidebar-open={sidebarOpen}>
+      <aside id="chat-sidebar" className="chat-sidebar" aria-label={t(locale, "layout.sidebar")} hidden={!sidebarOpen}>
+        <div className="sidebar-brand">
+          <span className="brand-mark" aria-hidden="true"><ChatIcon name="chat" /></span>
+          <span>ACP <span className="font-normal text-slate-400">Desktop</span></span>
+          <button type="button" className="icon-button ml-auto" onClick={closeSidebar} aria-label={t(locale, "layout.hideSidebar")}>
+            <ChatIcon name="panel" />
+          </button>
         </div>
+        <div className="sidebar-scroll">
+          <button type="button" className="new-chat-button" onClick={() => void connect("new")} disabled={!canConnectNew}>
+            <ChatIcon name="plus" /> {t(locale, "session.newSession")}
+          </button>
+          <section className="sidebar-section" aria-label={t(locale, "session.cwd")}>
+            <div className="sidebar-section-heading">
+              <span>{t(locale, "layout.workspace")}</span>
+              <button type="button" className="icon-button" onClick={() => void pickFolder()} disabled={contextLocked} title={t(locale, "session.pickFolder")} aria-label={t(locale, "session.pickFolder")}><ChatIcon name="folder" /></button>
+            </div>
+            <WorkspacePicker cwd={cwd} workspaces={recentWorkspaces} failed={workspaceError}
+              disabled={contextLocked} locale={locale} onSelect={(path) => void selectWorkspace(path)} />
+          </section>
+          <section className="sidebar-section history-section" aria-label={t(locale, "history.label")}>
+            <SessionHistory catalog={catalog} cwd={cwd} savedSessionId={savedSessionId}
+              disabled={contextLocked} failed={catalogError} variant="list"
+              locale={locale} onSelect={selectSavedSession} onRename={renameSavedSession}
+              onArchive={archiveSavedSession} onRestore={restoreSavedSession}
+              listSupported={sessionListSupported} listIncomplete={sessionListIncomplete} />
+          </section>
+          <details className="sidebar-details">
+            <summary>{t(locale, "layout.agentSettings")}</summary>
+            <button type="button" onClick={() => void refresh()} disabled={loading || switching || customEditing} className="subtle-button my-3">
+              {loading ? t(locale, "agents.checking") : t(locale, "agents.refresh")}
+            </button>
         {detectError ? (
           <ErrorNotice error={detectError} locale={locale} />
         ) : null}
@@ -253,7 +235,7 @@ export default function App() {
               <li key={agent.id}>
                 <button
                   type="button"
-                  disabled={!clickable || switching || customEditing}
+                  disabled={!clickable || busy || configuring || !!permission || switching || customEditing}
                   onClick={() => selectAgent(agent.id)}
                   className={`flex w-full items-center justify-between gap-3 py-2.5 text-left ${
                     available ? "text-slate-100" : "text-slate-500"
@@ -309,191 +291,17 @@ export default function App() {
           })}
         </ul>
         <CustomAgents locale={locale} disabled={connected || busy || switching || !!permission} />
-      </section>
 
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-        <h2 className="text-sm font-medium text-slate-200">
-          {usingFake
-            ? t(locale, "session.fakeTitle")
-            : t(locale, "session.agentTitle", {
-                name: selected?.name ?? "Agent",
-              })}
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void pickFolder()}
-            disabled={connected || busy || !!permission || switching}
-            className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-500 disabled:opacity-50"
-          >
-            {t(locale, "session.pickFolder")}
-          </button>
-          {!connected ? (
-            <>
-              {savedSessionId ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void connect("resume")}
-                    disabled={!canResume}
-                    title={
-                      loadSessionSupported === false
-                        ? t(locale, "session.resumeTitleUnsupported")
-                        : busy
-                          ? t(locale, "session.resumeTitleBusy")
-                          : t(locale, "session.resumeTitleId", {
-                              id: savedSessionId,
-                            })
-                    }
-                    className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                  >
-                    {t(locale, "session.resume")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void connect("new")}
-                    disabled={!canConnectNew}
-                    className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                  >
-                    {t(locale, "session.newSession")}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void connect("new")}
-                  disabled={!canConnectNew}
-                  className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-                >
-                  {t(locale, "session.connect")}
-                </button>
-              )}
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void disconnect()}
-              className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-200"
-            >
-              {t(locale, "session.disconnect")}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={clearTranscript}
-            className="rounded-md border border-slate-800 px-3 py-1.5 text-xs text-slate-400"
-          >
-            {t(locale, "session.clear")}
-          </button>
-        </div>
-        <WorkspacePicker cwd={cwd} workspaces={recentWorkspaces} failed={workspaceError}
-          disabled={connected || busy || !!permission || switching} locale={locale}
-          onSelect={(path) => void selectWorkspace(path)} />
-        <SessionHistory catalog={catalog} cwd={cwd} savedSessionId={savedSessionId}
-          disabled={connected || busy || !!permission || switching} failed={catalogError}
-          locale={locale} onSelect={selectSavedSession} onRename={renameSavedSession}
-          onArchive={archiveSavedSession} onRestore={restoreSavedSession}
-          listSupported={sessionListSupported} listIncomplete={sessionListIncomplete} />
-        <p className="text-xs text-slate-500 break-all">
-          {t(locale, "session.cwd")}: {cwd ?? "—"}{" "}
-          {sessionId
-            ? `· ${t(locale, "session.session")} ${sessionId}`
-            : ""}{" "}
-          {savedSessionId && !sessionId
-            ? `· ${t(locale, "session.saved")} ${savedSessionId}`
-            : ""}{" "}
-          {connected
-            ? `· ${t(locale, "session.connected")}`
-            : `· ${t(locale, "session.idle")}`}
-          {loadSessionSupported === false
-            ? ` · ${t(locale, "session.loadUnsupported")}`
-            : loadSessionSupported === true
-              ? ` · ${t(locale, "session.loadOk")}`
-              : ""}
-        </p>
-        {loadSessionSupported === false ? (
-          <p className="rounded-md border border-amber-900/60 bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
-            {t(locale, "session.resumeDisabledBefore")}
-            <code>loadSession</code>
-            {t(locale, "session.resumeDisabledAfter")}
-          </p>
-        ) : null}
-        {error ? (
-          <ErrorNotice error={error} locale={locale} />
-        ) : null}
-
-        <ChatTranscript lines={lines} locale={locale} resetKey={`${selectedAgentId}:${cwd}:${sessionId}`}>
-          {permission && (
-            <div ref={permissionCardRef}>
-              <PermissionCard
-                permission={permission}
-                allowButtonRef={allowButtonRef}
-                onRespond={(id) => void respondPermission(id)}
-                locale={locale}
-              />
-            </div>
-          )}
-        </ChatTranscript>
-
-        {connected ? <AgentSessionInfo metadata={metadata?.sessionId === sessionId ? metadata : null} locale={locale}
-          disabled={busy || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /> : null}
-
-        <div className="flex items-end gap-2">
-          <textarea
-            rows={3}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onCompositionStart={() => { composingRef.current = true; }}
-            onCompositionEnd={() => { composingRef.current = false; }}
-            onBlur={() => { composingRef.current = false; }}
-            onKeyDown={(e) => {
-              if (!draftEnterShouldSend(!!permission, e.key, e.shiftKey,
-                composingRef.current || e.nativeEvent.isComposing, e.nativeEvent.keyCode)) return;
-              e.preventDefault();
-              void send();
-            }}
-            disabled={!connected || busy || !!permission}
-            placeholder={
-              connected
-                ? usingFake
-                  ? t(locale, "session.placeholderConnectedFake")
-                  : t(locale, "session.placeholderConnected", {
-                      name: selected?.name ?? "agent",
-                    })
-                : t(locale, "session.placeholderIdle")
-            }
-            aria-label={t(locale, "chat.message")}
-            aria-describedby="composer-help"
-            className="max-h-64 min-w-0 flex-1 resize-y rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm leading-6 text-white placeholder:text-slate-600 disabled:opacity-50"
-          />
-          <button
-            type="button"
-            onClick={() => void send()}
-            disabled={!canSend}
-            className="rounded-md bg-sky-700 px-3 py-2 text-sm text-white disabled:opacity-40"
-          >
-            {t(locale, "session.send")}
-          </button>
-          <button
-            type="button"
-            onClick={() => void cancel()}
-            disabled={!canCancel}
-            title={
-              permission
-                ? t(locale, "session.cancelTitleAsk")
-                : busy
-                  ? t(locale, "session.cancelTitleBusy")
-                  : undefined
-            }
-            className="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 disabled:opacity-40"
-          >
-            {t(locale, "session.cancel")}
-          </button>
-        </div>
-        <p id="composer-help" className="text-xs text-slate-500">{t(locale, "chat.composerHelp")}</p>
-      </section>
-      <details className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 space-y-3">
+          </details>
+          <details className="sidebar-details">
+            <summary>{t(locale, "layout.sessionDetails")}</summary>
+            <p className="mt-3 break-all text-xs leading-6 text-slate-400">
+              {t(locale, "session.cwd")}: {cwd ?? "—"}<br />
+              {t(locale, "session.session")}: {sessionId ?? savedSessionId ?? "—"}
+            </p>
+            {loadSessionSupported !== null && <p className="mt-2 text-xs text-slate-400">{t(locale, loadSessionSupported ? "session.loadOk" : "session.loadUnsupported")}</p>}
+          </details>
+      <details className="sidebar-details space-y-3">
         <summary className="cursor-pointer text-xs text-slate-500">{t(locale, "dev.title")}</summary>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -529,7 +337,90 @@ export default function App() {
               : ""}
         </p>
       </details>
+        </div>
+        <div className="sidebar-footer">
+          <span className="text-xs text-slate-500">{t(locale, "badge.acpClient")}</span>
+          <select value={locale} onChange={(e) => setLocale(e.target.value as Locale)} aria-label={t(locale, "language.label")} className="locale-select">
+            <option value="en">English</option><option value="zh-CN">简体中文</option>
+          </select>
+        </div>
+      </aside>
 
+      <section className="conversation-pane" aria-label={t(locale, "chat.transcript")}>
+        <header className="conversation-header">
+          <button ref={sidebarToggleRef} type="button" className="icon-button" aria-controls="chat-sidebar" aria-expanded={sidebarOpen}
+            aria-label={t(locale, sidebarOpen ? "layout.hideSidebar" : "layout.showSidebar")} onClick={() => setSidebarOpen(!sidebarOpen)}>
+            <ChatIcon name="panel" />
+          </button>
+          <div className="conversation-heading">
+            <h1 title={selectedEntry?.title ?? undefined}>{selectedEntry?.title ?? t(locale, "session.newSession")}</h1>
+            <p title={cwd ?? undefined}>{workspaceName ?? t(locale, "layout.noWorkspace")}</p>
+          </div>
+          <label className="agent-switcher">
+            <span className="sr-only">{t(locale, "agents.switch")}</span>
+            <span className={`connection-dot ${connected ? "is-connected" : ""}`} aria-hidden="true" />
+            <select value={selectedAgentId} disabled={busy || switching || configuring || customEditing || !!permission}
+              onChange={(e) => selectAgent(e.target.value)}>
+              {agents.filter((a) => a.connectable).map((a) => <option key={a.id} value={a.id}>{a.name}{a.available ? "" : t(locale, "agents.missingSuffix")}</option>)}
+            </select>
+          </label>
+          <button type="button" className="icon-button clear-conversation" onClick={clearTranscript} title={t(locale, "session.clear")} aria-label={t(locale, "session.clear")}><ChatIcon name="clear" /></button>
+        </header>
+
+        <div className="connection-toolbar">
+          <span className={`connection-status ${busy ? "is-working" : ""}`} role="status">
+            {t(locale, permission ? "layout.awaitingPermission" : configuring ? "layout.configuring" : busy ? "layout.working" : connected ? "session.connected" : "session.idle")}
+            {usingFake && <span className="fixture-badge">{t(locale, "session.fakeTitle")}</span>}
+          </span>
+          <div className="flex items-center gap-2">
+            {!cwd && <button type="button" className="subtle-button" onClick={() => void pickFolder()} disabled={contextLocked}>{t(locale, "session.pickFolder")}</button>}
+            {connected ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "session.disconnect")}</button> : <>
+              {savedSessionId && <button type="button" className="subtle-button" onClick={() => void connect("resume")} disabled={!canResume}
+                title={loadSessionSupported === false ? t(locale, "session.resumeTitleUnsupported") : undefined}>{t(locale, "session.resume")}</button>}
+              <button type="button" className="connect-button" onClick={() => void connect("new")} disabled={!canConnectNew}>{t(locale, savedSessionId ? "session.newSession" : "session.connect")}</button>
+            </>}
+          </div>
+        </div>
+        {error && <div className="conversation-notice"><ErrorNotice error={error} locale={locale} /></div>}
+        {detectError && !sidebarOpen && <div className="conversation-notice"><ErrorNotice error={detectError} locale={locale} /></div>}
+        {loadSessionSupported === false && <p className="conversation-notice text-xs text-amber-200">{t(locale, "session.resumeDisabledBefore")}<code>loadSession</code>{t(locale, "session.resumeDisabledAfter")}</p>}
+
+        <ChatTranscript lines={lines} locale={locale} resetKey={`${selectedAgentId}:${cwd}:${sessionId}`} fill
+          agentName={selected?.name} emptyState={<div className="chat-welcome">
+            <div className="welcome-mark" aria-hidden="true"><ChatIcon name="chat" /></div>
+            <p className="welcome-eyebrow">ACP DESKTOP</p>
+            <h2>{t(locale, connected ? "layout.readyTitle" : "layout.welcomeTitle")}</h2>
+            <p>{t(locale, connected ? "layout.readyDescription" : "layout.welcomeDescription", { name: selected?.name ?? "Agent" })}</p>
+            <div className="welcome-context"><ChatIcon name="folder" /><span>{workspaceName ?? t(locale, "layout.noWorkspace")}</span><span aria-hidden="true">·</span><span>{selected?.name ?? "Agent"}</span></div>
+          </div>}>
+          {permission && <div ref={permissionCardRef}><PermissionCard permission={permission} allowButtonRef={allowButtonRef} onRespond={(id) => void respondPermission(id)} locale={locale} /></div>}
+        </ChatTranscript>
+
+        <footer className="composer-dock">
+          {connected && <details className="session-options">
+            <summary>{t(locale, "layout.sessionOptions")}{configError && <span className="ml-2 text-amber-200">{t(locale, "layout.configFailed")}</span>}</summary>
+            <div className="session-options-content"><AgentSessionInfo metadata={metadata?.sessionId === sessionId ? metadata : null} locale={locale}
+              disabled={busy || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /></div>
+          </details>}
+          <div className="composer-box">
+            <textarea rows={2} value={draft} onChange={(e) => setDraft(e.target.value)}
+              onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={() => { composingRef.current = false; }} onBlur={() => { composingRef.current = false; }}
+              onKeyDown={(e) => {
+                if (!canSend || !draftEnterShouldSend(!!permission, e.key, e.shiftKey, composingRef.current || e.nativeEvent.isComposing, e.nativeEvent.keyCode)) return;
+                e.preventDefault(); void send();
+              }}
+              disabled={!connected || busy || configuring || switching || !!permission}
+              placeholder={connected ? usingFake ? t(locale, "session.placeholderConnectedFake") : t(locale, "session.placeholderConnected", { name: selected?.name ?? "agent" }) : t(locale, "session.placeholderIdle")}
+              aria-label={t(locale, "chat.message")} aria-describedby="composer-help" />
+            <div className="composer-actions">
+              <span className="composer-agent"><span className={`connection-dot ${connected ? "is-connected" : ""}`} aria-hidden="true" />{selected?.name ?? "Agent"}</span>
+              {canCancel ? <button type="button" className="stop-button" onClick={() => void cancel()} title={t(locale, permission ? "session.cancelTitleAsk" : "session.cancelTitleBusy")}><ChatIcon name="stop" />{t(locale, "session.cancel")}</button>
+                : <button type="button" className="send-button" onClick={() => void send()} disabled={!canSend} aria-label={t(locale, "session.send")} title={t(locale, "session.send")}><ChatIcon name="send" /></button>}
+            </div>
+          </div>
+          <p id="composer-help" className="composer-help">{t(locale, "chat.composerHelp")}</p>
+        </footer>
+      </section>
     </main>
   );
 }

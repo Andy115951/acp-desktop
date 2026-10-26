@@ -24,7 +24,10 @@ function lineText(line: StreamLine, locale: Locale): string {
   return line.text;
 }
 
-export function ChatTranscript({ lines, locale, resetKey, children }: {
+export function ChatTranscript({ lines, locale, resetKey, children, fill = false, emptyState, agentName }: {
+  fill?: boolean;
+  emptyState?: ReactNode;
+  agentName?: string;
   lines: StreamLine[];
   locale: Locale;
   resetKey: string;
@@ -67,7 +70,7 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
   }, [lines, children, resetKey]);
 
   return (
-    <div className="relative">
+    <div className={fill ? "transcript-frame" : "relative"}>
       <div
         ref={scrollRef}
         role="log"
@@ -80,11 +83,11 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
           lastScrollTopRef.current = el.scrollTop;
           setFollowing(followingRef.current);
         }}
-        className="h-[min(55vh,36rem)] min-h-72 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4 [overflow-anchor:none]"
+        className={fill ? "transcript-scroll" : "h-[min(55vh,36rem)] min-h-72 overflow-y-auto overscroll-contain rounded-lg border border-slate-800 bg-black/20 p-4 [overflow-anchor:none]"}
       >
-        <div ref={contentRef} className="space-y-4">
+        <div ref={contentRef} className={fill ? `transcript-content ${lines.length === 0 && !children ? "is-empty" : ""}` : "space-y-4"}>
         {lines.length === 0 && !children ? (
-          <p className="text-sm text-slate-500">{t(locale, "session.transcriptEmpty")}</p>
+          emptyState ?? <p className="text-sm text-slate-500">{t(locale, "session.transcriptEmpty")}</p>
         ) : lines.map((line) => {
           const isUser = line.kind === "user" || line.kind === "user_message";
           const isNote = line.kind === "status" || line.kind === "stop";
@@ -100,11 +103,9 @@ export function ChatTranscript({ lines, locale, resetKey, children }: {
           }
           return (
             <article key={line.id} data-message-kind={line.kind} className={
-              isNote ? "text-xs text-slate-500" :
-              isUser ? "ml-8 rounded-xl border border-sky-900/50 bg-sky-950/30 p-3 text-sky-100" :
-              "mr-4 rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-slate-100"
+              isNote ? "message-note" : isUser ? "message-user" : "message-agent"
             }>
-              {!isNote && <p className="mb-2 text-xs font-medium text-slate-400">{t(locale, lineLabel(line.kind))}</p>}
+              {!isNote && <p className="mb-2 text-xs font-medium text-slate-400">{line.kind === "agent_message" && agentName ? agentName : t(locale, lineLabel(line.kind))}</p>}
               {line.kind === "agent_message" ? <MarkdownMessage text={content} locale={locale} /> :
                 <div className="whitespace-pre-wrap break-words text-sm leading-6">{content}</div>}
               {!isNote && <div className="mt-2 flex justify-end"><CopyButton text={line.text} locale={locale} /></div>}
