@@ -20,6 +20,7 @@ describe("error guidance", () => {
     ["Pick a workspace folder first.", "error.workspace"],
     ["No saved session for this folder.", "error.noSavedSession"],
     ["Agent does not advertise loadSession", "error.resumeUnsupported"],
+    ["Unsupported ACP protocol version. This client supports ACP v1 only. Use a v1-compatible agent.", "error.handshake"],
     ["Unexpected vendor diagnostic", "error.general"],
     ["prompt failed. Retry the request or reconnect.", "error.general"],
     ["initialize failed. Check the local agent’s ACP compatibility and retry.", "error.handshake"],

@@ -119,3 +119,15 @@ and never use shell parsing. CLI authentication and inherited environment remain
 unchanged. Raw custom subprocess errors are replaced by recovery-phase messages;
 configuration validation errors never echo rejected values. Session catalogs and
 metadata events use the stable profile ID through the existing shared ACP host.
+
+### Protocol version boundary
+
+`protocol_init.rs` explicitly requests ACP v1 and validates the response before
+session discovery, Resume or New. Any other major version closes the connection
+with an app-owned compatibility message, including for custom agents. Unknown
+capability keys are ignored; missing known capabilities stay off. No draft v2,
+terminal, filesystem or boolean-configuration client support is advertised.
+Known unsupported control kinds remain read-only; arbitrary unknown wire enum
+variants still depend on the pinned SDK schema and are not claimed as supported.
+
+Reference: [ACP v1 initialization and version negotiation](https://agentclientprotocol.com/protocol/v1/initialization).

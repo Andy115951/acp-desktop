@@ -1,13 +1,16 @@
 //! Long-lived ACP session bridged into Tauri (agent-agnostic stdio host).
 
+#[cfg(test)]
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
     ConfigOptionUpdate, SetSessionConfigOptionRequest, SessionConfigOptionValue,
-    CancelNotification, ContentBlock, InitializeRequest, LoadSessionRequest, NewSessionRequest,
+    CancelNotification, ContentBlock, LoadSessionRequest, NewSessionRequest,
     PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SelectedPermissionOutcome, SessionId, SessionNotification,
     SessionUpdate, TextContent, ToolCallContent, ToolCallLocation, ToolCallUpdate,
 };
+#[cfg(test)]
+use agent_client_protocol::schema::v1::InitializeRequest;
 use agent_client_protocol::util::MatchDispatch;
 use agent_client_protocol::{
     AcpAgent, Agent, Client, ConnectionTo, SessionMessage,
@@ -405,16 +408,8 @@ impl AcpSession {
                             let ready_for_thread = ready_for_connect;
                             let agent_id_for_prompt = agent_id_for_prompt;
                             async move {
-                                let init = connection
-                                    .send_request(InitializeRequest::new(ProtocolVersion::V1))
-                                    .block_task()
-                                    .await.map_err(|error| {
-                                        agent_client_protocol::Error::internal_error()
-                                            .data(format!("initialize failed: {error}"))
-                                    })?;
-
-                                let load_session_supported =
-                                    init.agent_capabilities.load_session;
+                                let capabilities = crate::protocol_init::initialize_v1(&connection).await?;
+                                let load_session_supported = capabilities.load_session;
 
                                 // Handshake still in progress — keep busy so UI
                                 // Connect/Resume stay disabled until session id is set.
@@ -432,7 +427,7 @@ impl AcpSession {
 
                                 let discovered = crate::session_discovery::discover_sessions(
                                     &connection, &agent_id_for_prompt, &cwd,
-                                    init.agent_capabilities.session_capabilities.list.is_some(),
+                                    capabilities.list_sessions,
                                 ).await;
                                 let _ = app.emit("acp://sessions", discovered);
 

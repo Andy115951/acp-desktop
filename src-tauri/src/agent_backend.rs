@@ -612,6 +612,10 @@ fn looks_like_spawn_failure(raw: &str) -> bool {
 /// Keeps the original message first so matchers like `session/load failed`
 /// still work on the leading text.
 pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
+    // This app-owned message must survive all vendor/custom error wrappers.
+    if raw.contains(crate::protocol_init::UNSUPPORTED_VERSION) {
+        return crate::protocol_init::UNSUPPORTED_VERSION.into();
+    }
     // Custom subprocess errors can echo argv, env or inherited credentials.
     // Keep only the phase needed for recovery, never arbitrary provider text.
     if agent_id.starts_with("custom-") {
