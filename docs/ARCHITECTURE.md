@@ -42,7 +42,7 @@ Implementations in `src-tauri/src/agent_backend.rs`:
 Host commands: `detect_agents`, `connect_agent(agent_id, …)`, `disconnect_agent` — UI never imports vendor spawn details.
 ACP session ops (`initialize` / `session/*` / permission replies) stay on the shared `AcpSession` bridge (protocol-identical for stdio agents).
 
-Built-in agent table + optional user overrides (`ACP_DESKTOP_AGENT_CMD` / `ACP_DESKTOP_FAKE_AGENT`). Do **not** depend on the ACP Registry for v1.
+Built-in agent table + stable-ID custom launch profiles + optional development overrides (`ACP_DESKTOP_AGENT_CMD` / `ACP_DESKTOP_FAKE_AGENT`, built-ins only). Do **not** depend on the ACP Registry for v1.
 
 ## Event flow (one turn)
 
@@ -103,3 +103,19 @@ Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; the
 - Permission card placement: inline in the chat transcript (no full-viewport modal)
 - UI language (`en` / `zh-CN`): tiny dictionary + header toggle; prefs key `ui.locale` (chrome only; no agent transcript / protocol translation)
 - CopilotBackend (M8): detect `copilot`, spawn `copilot --acp`, Agents list + per-vendor `copilot.sessionByCwd`
+
+### Custom launch profiles
+
+`custom_agents.rs` owns a bounded, versioned registry under the application config
+directory. Validation runs on read, write and launch; malformed/unknown registries
+are retained, with built-ins still usable. Writes use a sibling temporary file
+and rename under a registry mutex. Host-generated `custom-<UUID>` IDs cannot
+collide with built-ins, change on edit, or be reused through creation. Editing is
+blocked while connected. Removal affects only the launch registry.
+
+Custom profiles construct `AcpAgentConfig` with separate executable, argv and
+child-only environment fields; they bypass developer command-string overrides
+and never use shell parsing. CLI authentication and inherited environment remain
+unchanged. Raw custom subprocess errors are replaced by recovery-phase messages;
+configuration validation errors never echo rejected values. Session catalogs and
+metadata events use the stable profile ID through the existing shared ACP host.

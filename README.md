@@ -172,6 +172,39 @@ ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
 `ACP_DESKTOP_FAKE_AGENT=1` resolves `target/debug/fake-acp-agent` from the workspace when the binary is not on PATH. Default for users remains `grok agent stdio`.
 
 
+## Custom ACP agents
+
+Open **Agents → Custom agents → Add custom agent** while disconnected. Set a
+name, an absolute executable path (spaces need no quoting) or a command on PATH,
+an argument array such as `["--acp", "--label", "My agent"]`, and optional
+non-secret environment overrides such as `{"PROFILE": "local"}`. Every argument
+is passed literally; there is no shell expansion, interpolation or command-line
+splitting. Only launch executables you trust.
+
+Profiles are stored in `custom-agents.json` in the app's configuration directory
+as plain text, with generated stable IDs. Editing a profile retains its ID and
+session catalog. Distinct profiles, including profiles using the same executable,
+have separate app metadata from each other and the built-in agents. Removing a
+profile does not delete vendor conversations or app session metadata; creating a
+replacement assigns a new ID. Vendor storage remains authoritative, so two
+profiles aimed at the same vendor storage may still discover the same vendor IDs.
+
+Keep secrets out of both arguments and environment overrides. Credential-like
+environment names are rejected, but arbitrary values cannot be classified as
+secret automatically. Existing CLI login and the app's inherited environment
+remain available; the app does not provide a credential store. Overrides affect
+only the child process. Custom-agent connection/prompt diagnostics retain recovery
+phases without exposing raw subprocess errors. Agent-authored conversation and
+tool content still belong to the agent and can contain information it chooses to
+report.
+
+Custom profiles use ACP v1 and the same permission, Resume, discovery and reported
+configuration UI as built-ins. Missing capabilities keep the existing fallbacks.
+The developer fake/CMD overrides apply only to built-in selections; a custom
+profile always launches its own executable. The older `ACP_DESKTOP_AGENT_CMD`
+development override splits on whitespace; use a custom profile for paths or
+arguments with spaces.
+
 ## Build / release (macOS, M5)
 
 Ship a local `.app` / `.dmg` without bundling vendor CLIs:

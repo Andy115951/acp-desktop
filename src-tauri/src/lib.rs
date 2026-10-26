@@ -1,4 +1,5 @@
 mod agent_backend;
+mod custom_agents;
 mod acp_host;
 mod session_discovery;
 mod session_metadata;
@@ -14,11 +15,13 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 #[tauri::command]
-fn detect_agents() -> Vec<AgentInfo> {
-    detect_builtin_agents()
+fn detect_agents(app: tauri::AppHandle) -> Vec<AgentInfo> {
+    let mut agents = detect_builtin_agents();
+    if let Ok(custom) = custom_agents::load(&app) { agents.extend(custom.iter().map(|a| a.info())); }
+    agents
 }
 
-/// Connect the selected built-in agent (or fake/custom override) via ACP stdio.
+/// Connect a built-in agent or saved custom launch profile via ACP stdio.
 ///
 /// UI must pass `agent_id` from `detect_agents` (e.g. `"grok"`). Vendor spawn
 /// details stay behind [`agent_backend::AgentBackend`] — no UI fork per CLI.
@@ -34,13 +37,18 @@ async fn connect_agent(
         return Err(format!("Not a directory: {cwd}"));
     }
 
-    let backend = lookup_backend(&agent_id)?;
-    if !using_override_agent() && !backend.detect() {
-        return Err(missing_agent_message(backend));
-    }
-    let agent_argv = resolve_agent_command(backend)?;
+    let agent = if agent_id.starts_with("custom-") {
+        let profiles = custom_agents::load(&app)?;
+        let profile = profiles.iter().find(|a| a.id == agent_id).ok_or("Custom agent no longer exists.")?;
+        profile.launch()?
+    } else {
+        let backend = lookup_backend(&agent_id)?;
+        if !using_override_agent() && !backend.detect() { return Err(missing_agent_message(backend)); }
+        agent_client_protocol::AcpAgent::from_args(resolve_agent_command(backend)?)
+            .map_err(|_| "Failed to configure agent.".to_string())?
+    };
     // Awaits initialize + session/new|load so Connect stays busy until ready.
-    AcpSession::start(app, path, resume_session_id, agent_argv, agent_id.clone())
+    AcpSession::start(app, path, resume_session_id, agent, agent_id.clone())
         .await
         .map_err(|e| enrich_connect_error(&agent_id, &e))
 }
@@ -187,8 +195,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(AppState::new())
+        .manage(custom_agents::CustomAgentsState::default())
         .invoke_handler(tauri::generate_handler![
             detect_agents,
+            custom_agents::list_custom_agents,
+            custom_agents::save_custom_agent,
+            custom_agents::remove_custom_agent,
             connect_agent,
             disconnect_agent,
             send_prompt,
@@ -212,7 +224,7 @@ mod tests {
 
     #[test]
     fn detect_agents_includes_grok_codex_claude_copilot_connectable() {
-        let agents = detect_agents();
+        let agents = detect_builtin_agents();
         let grok = agents.iter().find(|a| a.id == "grok").expect("grok");
         assert_eq!(grok.binary, "grok");
         assert!(grok.connectable);

@@ -11,6 +11,23 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "custom.title"
+  | "custom.help"
+  | "custom.disconnect"
+  | "custom.failed"
+  | "custom.edit"
+  | "custom.remove"
+  | "custom.removeHelp"
+  | "custom.confirmRemove"
+  | "custom.cancel"
+  | "custom.add"
+  | "custom.name"
+  | "custom.executable"
+  | "custom.args"
+  | "custom.argsHelp"
+  | "custom.env"
+  | "custom.save"
+
   | "config.title"
   | "config.unknown"
   | "config.empty"
@@ -157,6 +174,23 @@ export type MessageKey =
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "custom.title": "Custom agents",
+  "custom.help": "Launch a trusted local ACP executable. Profiles are stored as plain text. Use non-secret arguments and environment values only; keep authentication in the CLI’s existing login or inherited environment.",
+  "custom.disconnect": "Disconnect before editing custom agents.",
+  "custom.failed": "Could not save or load this profile. Check the fields and retry. Arguments must be a JSON array of strings; environment must be a JSON object of strings.",
+  "custom.edit": "Edit",
+  "custom.remove": "Remove",
+  "custom.removeHelp": "Remove this launch profile? Vendor conversations and app session metadata will be retained. A new profile gets a new ID.",
+  "custom.confirmRemove": "Remove profile",
+  "custom.cancel": "Cancel",
+  "custom.add": "Add custom agent",
+  "custom.name": "Name",
+  "custom.executable": "Executable path or command",
+  "custom.args": "Arguments (JSON array)",
+  "custom.argsHelp": "Example: [\"--acp\", \"--label\", \"My agent\"]. Each string is one argument. Do not add shell quotes around the executable; no shell expansion is performed.",
+  "custom.env": "Non-secret environment overrides (JSON object)",
+  "custom.save": "Save profile",
+
   "header.description": "Conversations with your local coding agents.",
   "chat.copy": "Copy message",
   "chat.copyCode": "Copy code",
@@ -310,6 +344,23 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "custom.title": "自定义智能体",
+  "custom.help": "启动可信的本地 ACP 程序。配置以明文保存，仅填写非秘密参数和环境变量；登录凭据继续由 CLI 登录或继承的环境提供。",
+  "custom.disconnect": "请先断开连接再编辑自定义智能体。",
+  "custom.failed": "无法保存或读取配置，请检查后重试。参数必须为 JSON 字符串数组，环境变量必须为 JSON 字符串对象。",
+  "custom.edit": "编辑",
+  "custom.remove": "移除",
+  "custom.removeHelp": "移除此启动配置？厂商会话与应用会话元数据将保留。新建配置会获得新的 ID。",
+  "custom.confirmRemove": "移除配置",
+  "custom.cancel": "取消",
+  "custom.add": "添加自定义智能体",
+  "custom.name": "名称",
+  "custom.executable": "可执行文件路径或命令名",
+  "custom.args": "参数（JSON 数组）",
+  "custom.argsHelp": "例如：[\"--acp\", \"--label\", \"My agent\"]。每个字符串是一个参数。路径无需添加 shell 引号，不进行 shell 展开。",
+  "custom.env": "非秘密环境覆盖（JSON 对象）",
+  "custom.save": "保存配置",
+
   "header.description": "与本机编程智能体展开对话。",
   "chat.copy": "复制消息",
   "chat.copyCode": "复制代码",

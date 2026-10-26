@@ -61,6 +61,8 @@ type AgentsState = {
   /** Selected agent id for connect_agent (default grok). */
   selectedAgentId: string;
   loading: boolean;
+  customEditing: boolean;
+  setCustomEditing: (editing: boolean) => void;
   error: string | null;
   override: AgentOverride | null;
   refresh: () => Promise<void>;
@@ -72,6 +74,8 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
   agents: [],
   selectedAgentId: "grok",
   loading: false,
+  customEditing: false,
+  setCustomEditing: (customEditing) => set({ customEditing }),
   error: null,
   override: null,
   refresh: async () => {

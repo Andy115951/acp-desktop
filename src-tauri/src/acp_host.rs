@@ -247,7 +247,7 @@ impl AcpSession {
         app: AppHandle,
         cwd: PathBuf,
         resume_session_id: Option<String>,
-        agent_argv: Vec<String>,
+        agent: AcpAgent,
         agent_id: String,
     ) -> Result<(), String> {
         let state = app.state::<AppState>();
@@ -271,7 +271,7 @@ impl AcpSession {
         let session_id_for_task = session_id.clone();
         let app_for_status = app.clone();
         let resume_for_task = resume_session_id;
-        let agent_argv_for_task = agent_argv;
+        let agent_for_task = agent;
         let agent_id_for_task = agent_id.clone();
 
         let session = AcpSession {
@@ -308,29 +308,7 @@ impl AcpSession {
                     .build()
                     .expect("tokio runtime");
                 let _ = rt.block_on(async move {
-                    let agent = match AcpAgent::from_args(agent_argv_for_task) {
-                        Ok(a) => a,
-                        Err(e) => {
-                            let msg = enrich_connect_error(
-                                &agent_id_for_task,
-                                &format!("Failed to configure agent: {e}"),
-                            );
-                            let _ = app_for_status.emit(
-                                "acp://status",
-                                SessionStatus {
-                                    connected: false,
-                                    cwd: Some(cwd_for_task.display().to_string()),
-                                    session_id: None,
-                                    busy: false,
-                                    error: Some(msg.clone()),
-                                    load_session_supported: None,
-                                },
-                            );
-                            clear_session_slot(&app_for_status);
-                            signal_connect_ready(&ready_for_thread, Err(msg));
-                            return;
-                        }
-                    };
+                    let agent = agent_for_task;
 
                     let connection = Client
                         .builder()
@@ -507,9 +485,9 @@ impl AcpSession {
                                         Err(e) => {
                                             // Keep "session/load failed" prefix for UI matchers;
                                             // point users at Connect rather than raw FS_NOT_FOUND.
-                                            let msg = format!(
+                                            let msg = enrich_connect_error(&agent_id_for_prompt, &format!(
                                                 "session/load failed: {e}. Saved session is missing or expired — use Connect (New session)."
-                                            );
+                                            ));
                                             let _ = app.emit(
                                                 "acp://status",
                                                 SessionStatus {

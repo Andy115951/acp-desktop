@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { CustomAgents } from "./CustomAgents";
 import { AgentSessionInfo } from "./AgentSessionInfo";
 import { PermissionCard } from "./PermissionCard";
 import { ErrorNotice } from "./ErrorNotice";
@@ -25,6 +26,7 @@ export default function App() {
   const {
     agents,
     selectedAgentId,
+    customEditing,
     loading,
     error: detectError,
     override,
@@ -145,7 +147,7 @@ export default function App() {
   }, [permission]);
 
   const selected = agents.find((a) => a.id === selectedAgentId);
-  const usingFake = !!override?.usingOverride;
+  const usingFake = !selectedAgentId.startsWith("custom-") && !!override?.usingOverride;
   const canConnectAgent = canConnectSelectedAgent(
     selected?.connectable,
     selected?.available,
@@ -154,7 +156,7 @@ export default function App() {
   const uiGates = {
     cwd,
     connected,
-    busy: busy || switching || configuring,
+    busy: busy || switching || configuring || customEditing,
     permissionOpen: !!permission,
     draftTrimmed: !!draft.trim(),
     savedSessionId,
@@ -207,7 +209,7 @@ export default function App() {
               {t(locale, "agents.switch")}
               <select
                 value={selectedAgentId}
-                disabled={busy || switching}
+                disabled={busy || switching || customEditing}
                 onChange={(e) => selectAgent(e.target.value)}
                 className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
               >
@@ -224,7 +226,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => void refresh()}
-              disabled={loading || switching}
+              disabled={loading || switching || customEditing}
               className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:border-slate-500 disabled:opacity-50"
             >
               {loading
@@ -251,7 +253,7 @@ export default function App() {
               <li key={agent.id}>
                 <button
                   type="button"
-                  disabled={!clickable || switching}
+                  disabled={!clickable || switching || customEditing}
                   onClick={() => selectAgent(agent.id)}
                   className={`flex w-full items-center justify-between gap-3 py-2.5 text-left ${
                     available ? "text-slate-100" : "text-slate-500"
@@ -306,6 +308,7 @@ export default function App() {
             );
           })}
         </ul>
+        <CustomAgents locale={locale} disabled={connected || busy || switching || !!permission} />
       </section>
 
 
@@ -505,7 +508,7 @@ export default function App() {
           <label className="flex items-center gap-2 text-xs text-amber-100">
             <input
               type="checkbox"
-              checked={usingFake}
+              checked={!!override?.usingOverride}
               disabled={connected || busy}
               onChange={(e) => {
                 void setFakeAgent(e.target.checked).catch(() => undefined);
