@@ -11,6 +11,24 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "layout.workspace"
+  | "layout.historyHelp"
+  | "layout.sidebar"
+  | "layout.hideSidebar"
+  | "layout.showSidebar"
+  | "layout.agentSettings"
+  | "layout.sessionDetails"
+  | "layout.noWorkspace"
+  | "layout.awaitingPermission"
+  | "layout.configuring"
+  | "layout.working"
+  | "layout.readyTitle"
+  | "layout.welcomeTitle"
+  | "layout.readyDescription"
+  | "layout.welcomeDescription"
+  | "layout.sessionOptions"
+  | "layout.configFailed"
+
   | "custom.title"
   | "custom.help"
   | "custom.disconnect"
@@ -174,6 +192,24 @@ export type MessageKey =
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "layout.workspace": "Workspace",
+  "layout.historyHelp": "About session history",
+  "layout.sidebar": "Workspace and conversations",
+  "layout.hideSidebar": "Hide sidebar",
+  "layout.showSidebar": "Show sidebar",
+  "layout.agentSettings": "Agents & settings",
+  "layout.sessionDetails": "Session details",
+  "layout.noWorkspace": "No workspace selected",
+  "layout.awaitingPermission": "Waiting for your approval",
+  "layout.configuring": "Updating configuration…",
+  "layout.working": "Working…",
+  "layout.readyTitle": "What shall we work on?",
+  "layout.welcomeTitle": "A space to build.",
+  "layout.readyDescription": "Send a message to {name}. Your conversation stays with your agent.",
+  "layout.welcomeDescription": "Choose a workspace and connect your agent to start a conversation.",
+  "layout.sessionOptions": "Session options & commands",
+  "layout.configFailed": "Update failed",
+
   "custom.title": "Custom agents",
   "custom.help": "Launch a trusted local ACP executable. Profiles are stored as plain text. Use non-secret arguments and environment values only; keep authentication in the CLI’s existing login or inherited environment.",
   "custom.disconnect": "Disconnect before editing custom agents.",
@@ -344,6 +380,24 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "layout.workspace": "工作区",
+  "layout.historyHelp": "会话记录说明",
+  "layout.sidebar": "工作区与对话",
+  "layout.hideSidebar": "收起侧栏",
+  "layout.showSidebar": "展开侧栏",
+  "layout.agentSettings": "智能体与设置",
+  "layout.sessionDetails": "会话详情",
+  "layout.noWorkspace": "尚未选择工作区",
+  "layout.awaitingPermission": "等待你的授权",
+  "layout.configuring": "正在更新配置…",
+  "layout.working": "正在处理…",
+  "layout.readyTitle": "我们来做点什么？",
+  "layout.welcomeTitle": "从这里开始创造。",
+  "layout.readyDescription": "向 {name} 发送消息，对话仍由你的智能体保存。",
+  "layout.welcomeDescription": "选择工作区，连接智能体，开始一段对话。",
+  "layout.sessionOptions": "会话选项与命令",
+  "layout.configFailed": "更新失败",
+
   "custom.title": "自定义智能体",
   "custom.help": "启动可信的本地 ACP 程序。配置以明文保存，仅填写非秘密参数和环境变量；登录凭据继续由 CLI 登录或继承的环境提供。",
   "custom.disconnect": "请先断开连接再编辑自定义智能体。",
