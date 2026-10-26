@@ -21,6 +21,8 @@ describe("error guidance", () => {
     ["No saved session for this folder.", "error.noSavedSession"],
     ["Agent does not advertise loadSession", "error.resumeUnsupported"],
     ["Unexpected vendor diagnostic", "error.general"],
+    ["prompt failed. Retry the request or reconnect.", "error.general"],
+    ["initialize failed. Check the local agent’s ACP compatibility and retry.", "error.handshake"],
     ["initialize failed: unauthorized\n\nClaude auth: login", "error.auth"],
     ["initialize failed: invalid response\n\nIf this looks like missing install or auth: login via npx", "error.handshake"],
     ["session/new failed: workspace unavailable", "error.session"],

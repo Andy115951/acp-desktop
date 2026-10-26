@@ -282,7 +282,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
     // Host now awaits handshake, but still guard double-clicks while busy /
     // already connected so we never stack a second connect_agent.
-    if (get().busy || get().connected || get().switching || get().permission) {
+    if (get().busy || get().connected || get().switching || get().permission || useAgentsStore.getState().customEditing) {
       return;
     }
     const resumeSessionId =

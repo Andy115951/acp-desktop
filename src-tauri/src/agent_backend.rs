@@ -612,6 +612,22 @@ fn looks_like_spawn_failure(raw: &str) -> bool {
 /// Keeps the original message first so matchers like `session/load failed`
 /// still work on the leading text.
 pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
+    // Custom subprocess errors can echo argv, env or inherited credentials.
+    // Keep only the phase needed for recovery, never arbitrary provider text.
+    if agent_id.starts_with("custom-") {
+        return if raw.contains("session/load failed") {
+            "session/load failed. Retry or start a New session."
+        } else if raw.contains("prompt failed") {
+            "prompt failed. Retry the request or reconnect."
+        } else if raw.contains("initialize failed") {
+            "initialize failed. Check the local agent's ACP compatibility and retry."
+        } else if raw.contains("session/new failed") {
+            "session/new failed. Check the workspace and retry."
+        } else {
+            "Custom agent connection failed. Check the local executable, arguments and CLI setup, then retry."
+        }.into();
+    }
+
     let raw = raw.trim();
     if raw.is_empty() {
         return raw.to_string();
