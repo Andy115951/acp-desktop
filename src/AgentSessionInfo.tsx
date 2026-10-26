@@ -1,10 +1,13 @@
+import { SessionConfig } from "./SessionConfig";
 import { t, type Locale } from "./lib/i18n";
 import type { SessionMetadata } from "./lib/sessionMetadata";
 
-export function AgentSessionInfo({ metadata, locale, disabled, onCommand }: {
+export function AgentSessionInfo({ metadata, locale, disabled, onCommand, configFailed = false, onConfigure = () => {} }: {
+  configFailed?: boolean; onConfigure?: (id: string, value: string) => void;
   metadata: SessionMetadata | null; locale: Locale; disabled: boolean; onCommand: (name: string) => void;
 }) {
   return <aside className="space-y-2 rounded-md border border-slate-800 px-3 py-2 text-xs text-slate-400" aria-label={t(locale, "agentInfo.title")}>
+    <SessionConfig options={metadata?.configOptions} disabled={disabled} failed={configFailed} locale={locale} onChange={onConfigure} />
     <p>{metadata?.usage
       ? t(locale, "agentInfo.context", { used: metadata.usage.used, size: metadata.usage.size })
       : t(locale, "agentInfo.contextUnknown")}</p>

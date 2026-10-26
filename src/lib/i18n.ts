@@ -11,6 +11,12 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "config.title"
+  | "config.unknown"
+  | "config.empty"
+  | "config.unsupported"
+  | "config.valueUnknown"
+  | "config.failed"
   | "agentInfo.title"
   | "agentInfo.context"
   | "agentInfo.contextUnknown"
@@ -244,6 +250,12 @@ const en: Dictionary = {
   "history.label": "Saved sessions",
   "history.choose": "Choose a session",
   "history.empty": "No saved sessions for this workspace",
+  "config.title": "Session configuration",
+  "config.unknown": "This agent has not reported configuration options.",
+  "config.empty": "This agent reports no configuration options.",
+  "config.unsupported": "This control type is not supported by this client.",
+  "config.valueUnknown": "Current value not reported",
+  "config.failed": "The agent rejected the update or did not respond. Showing the last reported values; you can retry.",
   "agentInfo.title": "Agent session information",
   "agentInfo.context": "Agent-reported context: {used} / {size} tokens",
   "agentInfo.contextUnknown": "Context usage has not been reported by this agent.",
@@ -391,6 +403,12 @@ const zhCN: Dictionary = {
   "history.label": "已保存的会话",
   "history.choose": "选择会话",
   "history.empty": "此工作区暂无保存的会话",
+  "config.title": "会话配置",
+  "config.unknown": "此智能体尚未报告配置选项。",
+  "config.empty": "此智能体报告当前没有配置选项。",
+  "config.unsupported": "本客户端暂不支持此控件类型。",
+  "config.valueUnknown": "尚未报告当前值",
+  "config.failed": "智能体拒绝了修改或未响应，当前显示最近报告的值，可重试。",
   "agentInfo.title": "智能体会话信息",
   "agentInfo.context": "智能体报告的上下文：{used} / {size} tokens",
   "agentInfo.contextUnknown": "此智能体尚未报告上下文用量。",

@@ -18,6 +18,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_client_protocol::schema::v1::{
+    ConfigOptionUpdate, SessionConfigOption, SessionConfigSelectGroup, SessionConfigSelectOption, SetSessionConfigOptionRequest, SetSessionConfigOptionResponse,
     AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, UnstructuredCommandInput, UsageUpdate,
     AgentCapabilities, CancelNotification, ContentBlock, ContentChunk, Diff, InitializeRequest,
     InitializeResponse, ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, LoadSessionResponse, NewSessionRequest,
@@ -27,6 +28,10 @@ use agent_client_protocol::schema::v1::{
     ToolCallUpdate, ToolCallUpdateFields, ToolKind,
 };
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Stdio};
+
+static CONFIG_MODEL: AtomicU64 = AtomicU64::new(0);
+static CONFIG_MODE: AtomicU64 = AtomicU64::new(0);
+static CONFIG_REASONING: AtomicU64 = AtomicU64::new(0);
 
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 static NEXT_TOOL: AtomicU64 = AtomicU64::new(1);
@@ -76,6 +81,22 @@ fn is_known_fake_session(id: &str) -> bool {
         return false;
     };
     !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+}
+
+fn fake_config_options() -> Option<Vec<SessionConfigOption>> {
+    if !std::env::args().any(|arg| arg == "--config-options") { return None; }
+    Some(vec![
+        SessionConfigOption::select("model", "Model", match CONFIG_MODEL.load(Ordering::Relaxed) { 1 => "fast", 2 => "slow", _ => "balanced" }, vec![
+            SessionConfigSelectGroup::new("local", "Fixture models", vec![
+                SessionConfigSelectOption::new("balanced", "Balanced"), SessionConfigSelectOption::new("fast", "Fast"),
+                SessionConfigSelectOption::new("denied", "Rejected model"), SessionConfigSelectOption::new("slow", "Slow model"),
+            ])
+        ]).description("Choose an agent-advertised model"),
+        SessionConfigOption::select("mode", "Mode", if CONFIG_MODE.load(Ordering::Relaxed) == 0 { "code" } else { "plan" }, vec![
+            SessionConfigSelectOption::new("code", "Code"), SessionConfigSelectOption::new("plan", "Plan")]),
+        SessionConfigOption::select("reasoning", "Reasoning", if CONFIG_REASONING.load(Ordering::Relaxed) == 0 { "low" } else { "high" }, vec![
+            SessionConfigSelectOption::new("low", "Low"), SessionConfigSelectOption::new("high", "High")]),
+    ])
 }
 
 fn send_session_info(connection: &ConnectionTo<Client>, session_id: SessionId) -> agent_client_protocol::Result<()> {
@@ -140,7 +161,7 @@ async fn main() -> agent_client_protocol::Result<()> {
                     format!("fake-session-{id}")
                 };
                 send_session_info(&connection, SessionId::new(session_id.clone()))?;
-                responder.respond(NewSessionResponse::new(SessionId::new(session_id)))
+                responder.respond(NewSessionResponse::new(SessionId::new(session_id)).config_options(fake_config_options()))
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -168,7 +189,29 @@ async fn main() -> agent_client_protocol::Result<()> {
                 ))?;
                 connection.spawn(async move {
                     tokio::task::yield_now().await;
-                    responder.respond(LoadSessionResponse::new())?;
+                    responder.respond(LoadSessionResponse::new().config_options(fake_config_options()))?;
+                    Ok(())
+                })?;
+                Ok(())
+            },
+            agent_client_protocol::on_receive_request!(),
+        )
+        .on_receive_request(
+            async move |request: SetSessionConfigOptionRequest, responder, connection: ConnectionTo<Client>| {
+                if fake_config_options().is_none() { return responder.respond_with_error(Error::method_not_found()); }
+                let id = request.config_id.0.as_ref();
+                let value = request.value.as_value_id().map(|v| v.0.to_string()).unwrap_or_default();
+                let target = match id { "model" => &CONFIG_MODEL, "mode" => &CONFIG_MODE, "reasoning" => &CONFIG_REASONING, _ => return responder.respond_with_error(Error::invalid_params()) };
+                let setting = match (id, value.as_str()) {
+                    ("model", "balanced") | ("mode", "code") | ("reasoning", "low") => 0,
+                    ("model", "fast") | ("mode", "plan") | ("reasoning", "high") => 1,
+                    ("model", "slow") => 2,
+                    _ => return responder.respond_with_error(Error::invalid_params().data("fixture-secret-do-not-render")),
+                };
+                connection.spawn(async move {
+                    if value == "slow" { tokio::time::sleep(std::time::Duration::from_secs(5)).await; }
+                    target.store(setting, Ordering::Relaxed);
+                    responder.respond(SetSessionConfigOptionResponse::new(fake_config_options().unwrap_or_default()))?;
                     Ok(())
                 })?;
                 Ok(())
@@ -185,6 +228,12 @@ async fn main() -> agent_client_protocol::Result<()> {
                     Some(ContentBlock::Text(text)) => text.text.clone(),
                     _ => String::new(),
                 };
+                if scenario == "fake:config-update" || scenario == "fake:clear-config" {
+                    CONFIG_MODE.store(1, Ordering::Relaxed);
+                    let options = if scenario == "fake:clear-config" { vec![] } else { fake_config_options().unwrap_or_default() };
+                    connection.send_notification(SessionNotification::new(req.session_id.clone(), SessionUpdate::ConfigOptionUpdate(ConfigOptionUpdate::new(options))))?;
+                    return responder.respond(PromptResponse::new(StopReason::EndTurn));
+                }
                 if scenario == "fake:clear-session-info" {
                     connection.send_notification(SessionNotification::new(req.session_id.clone(), SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![]))))?;
                     connection.send_notification(SessionNotification::new(req.session_id.clone(), SessionUpdate::UsageUpdate(UsageUpdate::new(4096, 8192))))?;

@@ -2,6 +2,7 @@
 
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
+    ConfigOptionUpdate, SetSessionConfigOptionRequest, SessionConfigOptionValue,
     CancelNotification, ContentBlock, InitializeRequest, LoadSessionRequest, NewSessionRequest,
     PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SelectedPermissionOutcome, SessionId, SessionNotification,
@@ -96,6 +97,10 @@ enum HostCommand {
         text: String,
         reply: oneshot::Sender<Result<String, String>>,
     },
+    Configure {
+        session_id: String, id: String, value: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
     Cancel,
 }
 
@@ -117,6 +122,9 @@ async fn await_prompt<F: Future>(
                 }
                 Some(HostCommand::Prompt { reply, .. }) => {
                     let _ = reply.send(Err("A prompt is already running.".into()));
+                }
+                Some(HostCommand::Configure { reply, .. }) => {
+                    let _ = reply.send(Err("Session is busy.".into()));
                 }
                 None => return None,
             }
@@ -250,6 +258,7 @@ impl AcpSession {
         let pending_permission: Arc<Mutex<Option<(u64, PendingPermission)>>> =
             Arc::new(Mutex::new(None));
         let next_perm_id = Arc::new(Mutex::new(1u64));
+        let config_snapshot = Arc::new(StdMutex::new(crate::session_config::ConfigSnapshot::default()));
         let session_id: Arc<Mutex<Option<SessionId>>> = Arc::new(Mutex::new(None));
         let (ready_tx, ready_rx) = oneshot::channel::<Result<(), String>>();
 
@@ -331,8 +340,9 @@ impl AcpSession {
                                 let app = app_for_notif.clone();
                                 let agent_id = agent_id_for_task.clone();
                                 let cwd = cwd_for_task.display().to_string();
+                                let config = config_snapshot.clone();
                                 async move |notification: SessionNotification, _cx| {
-                                    emit_session_update(&app, &notification, &agent_id, &cwd);
+                                    emit_session_update(&app, &notification, &agent_id, &cwd, &config);
                                     Ok(())
                                 }
                             },
@@ -406,6 +416,7 @@ impl AcpSession {
                             let resume_for_task = resume_for_task.clone();
                             let pending_for_cmds = pending_for_cmds.clone();
                             let agent_id_for_prompt = agent_id_for_task.clone();
+                            let config = config_snapshot.clone();
                             move |connection: ConnectionTo<Agent>| {
                             let mut cmd_rx = cmd_rx;
                             let session_id = session_id_for_task;
@@ -518,9 +529,13 @@ impl AcpSession {
                                     };
 
                                     let loaded_sid = restored.session().session_id().clone();
+                                    config.lock().unwrap().bind(&loaded_sid.0);
+                                    if let Some(options) = &restored.response().config_options {
+                                        emit_session_update(&app, &SessionNotification::new(loaded_sid.clone(), SessionUpdate::ConfigOptionUpdate(ConfigOptionUpdate::new(options.clone()))), &agent_id_for_prompt, &cwd.display().to_string(), &config);
+                                    }
                                     // Drain replayed session/update into the chat UI, then drop
                                     // ActiveSession so later updates hit the connection handler.
-                                    let n = drain_load_replay(&app, restored.into_session(), &agent_id_for_prompt, &cwd.display().to_string()).await;
+                                    let n = drain_load_replay(&app, restored.into_session(), &agent_id_for_prompt, &cwd.display().to_string(), &config).await;
                                     if n == 0 {
                                         // Replay can also arrive through the connection-level
                                         // handler, so an empty drain does not imply no history.
@@ -543,6 +558,10 @@ impl AcpSession {
                                             agent_client_protocol::Error::internal_error()
                                                 .data(format!("session/new failed: {error}"))
                                         })?;
+                                    config.lock().unwrap().bind(&new_session.session_id.0);
+                                    if let Some(options) = new_session.config_options {
+                                        emit_session_update(&app, &SessionNotification::new(new_session.session_id.clone(), SessionUpdate::ConfigOptionUpdate(ConfigOptionUpdate::new(options))), &agent_id_for_prompt, &cwd.display().to_string(), &config);
+                                    }
                                     new_session.session_id
                                 };
 
@@ -621,6 +640,23 @@ impl AcpSession {
                                                     ),
                                                 },
                                             );
+                                        }
+                                        HostCommand::Configure { session_id: expected, id, value, reply } => {
+                                            if expected != sid.0.as_ref() || !config.lock().unwrap().permits(&expected, &id, &value) {
+                                                let _ = reply.send(Err("Configuration value is not currently advertised.".into()));
+                                                continue;
+                                            }
+                                            let request = connection.send_request(SetSessionConfigOptionRequest::new(sid.clone(), id, SessionConfigOptionValue::value_id(value))).block_task();
+                                            let Some(result) = await_prompt(tokio::time::timeout(Duration::from_secs(15), request), &mut cmd_rx, &pending_perms, || {}).await else { break; };
+                                            let result = match result {
+                                                Ok(Ok(response)) => {
+                                                    emit_session_update(&app, &SessionNotification::new(sid.clone(), SessionUpdate::ConfigOptionUpdate(ConfigOptionUpdate::new(response.config_options))), &agent_id_for_prompt, &cwd.display().to_string(), &config);
+                                                    Ok(())
+                                                }
+                                                // Never put arbitrary provider error data (which can contain secrets) in diagnostics.
+                                                _ => Err("Configuration update was rejected or timed out.".into()),
+                                            };
+                                            let _ = reply.send(result);
                                         }
                                         HostCommand::Cancel => {
                                             // Belt-and-suspenders: AcpSession::cancel already
@@ -705,6 +741,12 @@ impl AcpSession {
             .map_err(|_| "session channel closed".to_string())?;
         rx.await
             .map_err(|_| "session dropped before reply".to_string())?
+    }
+
+    pub async fn configure(&self, session_id: String, id: String, value: String) -> Result<(), String> {
+        let (reply, result) = oneshot::channel();
+        self.cmd_tx.send(HostCommand::Configure { session_id, id, value, reply }).map_err(|_| "session channel closed".to_string())?;
+        result.await.map_err(|_| "session closed during configuration".to_string())?
     }
 
     pub async fn cancel(&self) -> Result<(), String> {
@@ -862,9 +904,10 @@ fn stream_event_for_session_update(update: &SessionUpdate) -> Option<StreamEvent
     Some(StreamEvent { kind, text, tool })
 }
 
-fn emit_session_update(app: &AppHandle, notification: &SessionNotification, agent_id: &str, cwd: &str) {
+fn emit_session_update(app: &AppHandle, notification: &SessionNotification, agent_id: &str, cwd: &str, config: &StdMutex<crate::session_config::ConfigSnapshot>) {
     if let Some(event) = crate::session_metadata::metadata_event(agent_id, cwd, notification) {
-        let _ = app.emit("acp://metadata", event);
+        let accepted = event.config_options.as_ref().is_none_or(|options| config.lock().unwrap().update(&event.session_id, options.clone()));
+        if accepted { let _ = app.emit("acp://metadata", event); }
     }
     if let Some(event) = stream_event_for_session_update(&notification.update) {
         let _ = app.emit("acp://stream", event);
@@ -888,6 +931,7 @@ async fn drain_load_replay(
     mut session: agent_client_protocol::ActiveSession<'static, Agent>,
     agent_id: &str,
     cwd: &str,
+    config: &StdMutex<crate::session_config::ConfigSnapshot>,
 ) -> usize {
     // Generous first-chunk budget: notification is queued before the load
     // response, but stdio + spawn scheduling can still lag briefly after
@@ -919,7 +963,7 @@ async fn drain_load_replay(
                 let hit_flag = hit.clone();
                 let result = MatchDispatch::new(dispatch)
                     .if_notification(async move |notif: SessionNotification| {
-                        emit_session_update(&app, &notif, agent_id, cwd);
+                        emit_session_update(&app, &notif, agent_id, cwd, config);
                         hit_flag.store(true, std::sync::atomic::Ordering::SeqCst);
                         Ok(())
                     })

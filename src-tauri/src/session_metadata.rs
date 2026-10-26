@@ -30,6 +30,8 @@ pub struct SessionMetadata {
     pub commands: Option<Vec<CommandInfo>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<ContextUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_options: Option<Vec<crate::session_config::ConfigOption>>,
 }
 
 pub fn metadata_event(
@@ -43,6 +45,7 @@ pub fn metadata_event(
         session_id: notification.session_id.0.to_string(),
         commands: None,
         usage: None,
+        config_options: None,
     };
     match &notification.update {
         SessionUpdate::AvailableCommandsUpdate(update) => {
@@ -71,6 +74,9 @@ pub fn metadata_event(
                     })
                     .collect(),
             );
+        }
+        SessionUpdate::ConfigOptionUpdate(update) => {
+            event.config_options = Some(crate::session_config::config_options(&update.config_options));
         }
         SessionUpdate::UsageUpdate(update) => {
             event.usage = Some(ContextUsage {
