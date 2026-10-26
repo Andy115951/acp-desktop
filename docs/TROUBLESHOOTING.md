@@ -24,7 +24,7 @@ check. A source build is the current developer path.
 
 | Symptom | What to check |
 | --- | --- |
-| Agent grey / executable missing | A desktop-launched app may inherit a different PATH from your shell. Check the executable location; use a custom profile with an absolute executable path when needed. Do not put quotes around a path containing spaces in the executable field. |
+| Agent grey / executable missing | On macOS, startup recovers PATH from your login shell (up to 3 seconds), then adds inherited and common CLI locations. Only PATH is imported; shell output and unrelated environment variables are not. If shell initialization fails or hangs, common-path fallback still applies. Check that your login shell sets the intended Node/version-manager path; use a custom profile with an absolute executable path and a non-secret PATH override when needed. Do not put quotes around a path containing spaces in the executable field. |
 | Adapter startup timeout | Ensure Node/npx and the adapter are available in the app environment. Installing a known adapter version avoids the fallback's first-run download. Do not treat detect success as a login test. |
 | Authentication, quota or TLS error | Verify the CLI's own login/network/quota state. A usage limit is not fixed by reinstalling the app. Keep TLS verification enabled; fix the trust configuration with the service/proxy administrator. Claude's recorded blocker is [#22](https://github.com/Andy115951/acp-desktop/issues/22). |
 | ACP version mismatch | Use a v1-compatible endpoint. Draft v2 is not negotiated. The failed connection returns to idle without deleting the saved session. |
