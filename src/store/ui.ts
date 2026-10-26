@@ -1,3 +1,4 @@
+import { applyTheme, loadTheme, saveTheme, type Theme } from "../lib/theme";
 import { create } from "zustand";
 import { Store } from "@tauri-apps/plugin-store";
 import {
@@ -38,12 +39,20 @@ async function saveLocale(locale: Locale): Promise<void> {
 }
 
 type UiState = {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
   locale: Locale;
   hydrateLocale: () => Promise<void>;
   setLocale: (locale: Locale) => void;
 };
 
 export const useUiStore = create<UiState>((set, get) => ({
+  theme: loadTheme(),
+  setTheme: (theme) => {
+    set({ theme });
+    applyTheme(theme, window.matchMedia("(prefers-color-scheme: dark)").matches);
+    saveTheme(theme);
+  },
   locale: DEFAULT_LOCALE,
   hydrateLocale: async () => {
     const locale = await loadLocale();

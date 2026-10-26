@@ -11,6 +11,7 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "theme.label" | "theme.system" | "theme.light" | "theme.dark"
   | "layout.workspace"
   | "layout.historyHelp"
   | "layout.sidebar"
@@ -192,6 +193,10 @@ export type MessageKey =
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "theme.label": "Theme",
+  "theme.system": "System",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
   "layout.workspace": "Workspace",
   "layout.historyHelp": "About session history",
   "layout.sidebar": "Workspace and conversations",
@@ -380,6 +385,10 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "theme.label": "主题",
+  "theme.system": "跟随系统",
+  "theme.light": "浅色",
+  "theme.dark": "深色",
   "layout.workspace": "工作区",
   "layout.historyHelp": "会话记录说明",
   "layout.sidebar": "工作区与对话",

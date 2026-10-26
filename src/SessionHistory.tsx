@@ -36,14 +36,14 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
           </button></li>)}
         </ul>}
       </> : <>
-      <label className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+      <label className="flex flex-wrap items-center gap-2 text-xs text-ui-muted">
         {t(locale, "history.label")}
         <select
           aria-label={t(locale, "history.label")}
           value={entries.some((entry) => entry.sessionId === savedSessionId) ? savedSessionId! : ""}
           disabled={disabled || entries.length === 0}
           onChange={(event) => onSelect(event.target.value)}
-          className="min-w-0 max-w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 disabled:opacity-50"
+          className="min-w-0 max-w-full rounded-md border border-ui-border bg-ui-code px-2 py-1 text-xs text-ui-primary disabled:opacity-50"
         >
           <option value="" disabled>{t(locale, entries.length ? "history.choose" : "history.empty")}</option>
           {entries.map((entry) => (
@@ -59,12 +59,12 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={disabled || !selected || editing}
             onClick={() => { setTitle(selected?.title ?? ""); setEditing(true); }}
-            className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-40">
+            className="rounded-md border border-ui-border px-2 py-1 text-xs text-ui-secondary disabled:opacity-40">
             {t(locale, "history.rename")}
           </button>
           <button type="button" disabled={disabled || !selected || editing} onClick={() => void onArchive()}
             title={t(locale, "history.archiveHelp")}
-            className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-40">
+            className="rounded-md border border-ui-border px-2 py-1 text-xs text-ui-secondary disabled:opacity-40">
             {t(locale, "history.archive")}
           </button>
         </div>
@@ -74,26 +74,26 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
           event.preventDefault();
           if (!disabled && title.trim()) void onRename?.(title).then((saved) => { if (saved) setEditing(false); });
         }}>
-          <label className="text-xs text-slate-400">
+          <label className="text-xs text-ui-muted">
             {t(locale, "history.title")}
             <input autoFocus required maxLength={SESSION_TITLE_LIMIT} value={title} disabled={disabled}
               onChange={(event) => setTitle(event.target.value)}
-              className="mt-1 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-white" />
+              className="mt-1 w-full min-w-0 rounded-md border border-ui-border bg-ui-code px-2 py-1 text-sm text-white" />
           </label>
           <button type="submit" disabled={disabled || !title.trim()}
             className="rounded-md bg-sky-700 px-2 py-1 text-xs text-white disabled:opacity-40">{t(locale, "history.save")}</button>
           <button type="button" disabled={disabled} onClick={() => setEditing(false)}
-            className="text-xs text-slate-400">{t(locale, "history.cancel")}</button>
+            className="text-xs text-ui-muted">{t(locale, "history.cancel")}</button>
         </form>
       ) : null}
       {variant === "list" ? <details className="history-help"><summary>{t(locale, "layout.historyHelp")}</summary>
         <p>{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>
-      </details> : <p className="text-xs text-slate-500">{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>}
-      {listIncomplete ? <p role="status" className="text-xs text-amber-200">{t(locale, "history.listIncomplete")}</p> : null}
-      {disabled ? <p className="text-xs text-slate-400">{t(locale, "history.disconnect")}</p> : null}
-      {failed ? <p role="alert" className="text-xs text-amber-200">{t(locale, "history.failed")}</p> : null}
+      </details> : <p className="text-xs text-ui-faint">{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>}
+      {listIncomplete ? <p role="status" className="text-xs text-ui-warning">{t(locale, "history.listIncomplete")}</p> : null}
+      {disabled ? <p className="text-xs text-ui-muted">{t(locale, "history.disconnect")}</p> : null}
+      {failed ? <p role="alert" className="text-xs text-ui-warning">{t(locale, "history.failed")}</p> : null}
       {onRestore && archived.length > 0 ? (
-        <details className="space-y-2 text-xs text-slate-400">
+        <details className="space-y-2 text-xs text-ui-muted">
           <summary className="cursor-pointer">{t(locale, "history.archived", { count: String(archived.length) })}</summary>
           <p>{t(locale, "history.archiveHelp")}</p>
           <ul className="space-y-2">
@@ -102,7 +102,7 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
                 <span className="min-w-0 break-all">{entry.title ?? entry.sessionId}{entry.unavailable ? ` · ${t(locale, "history.unavailable")}` : ""}</span>
                 <button type="button" disabled={disabled || editing} onClick={() => void onRestore(entry.sessionId)}
                   aria-label={t(locale, "history.restoreNamed", { name: entry.title ?? entry.sessionId })}
-                  className="shrink-0 rounded-md border border-slate-700 px-2 py-1 disabled:opacity-40">{t(locale, "history.restore")}</button>
+                  className="shrink-0 rounded-md border border-ui-border px-2 py-1 disabled:opacity-40">{t(locale, "history.restore")}</button>
               </li>
             ))}
           </ul>

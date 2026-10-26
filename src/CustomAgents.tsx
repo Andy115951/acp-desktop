@@ -4,8 +4,8 @@ import { parseLaunchFields, type CustomAgent } from "./lib/customAgents";
 import { t, type Locale } from "./lib/i18n";
 import { useAgentsStore } from "./store/agents";
 
-const field = "w-full rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-200 disabled:opacity-50";
-const button = "rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 disabled:opacity-50";
+const field = "w-full rounded border border-ui-border bg-ui-code px-2 py-1.5 text-sm text-ui-primary disabled:opacity-50";
+const button = "rounded border border-ui-border px-2 py-1 text-xs text-ui-secondary disabled:opacity-50";
 
 export function CustomAgents({ locale, disabled }: { locale: Locale; disabled: boolean }) {
   const { agents, refresh, selectAgent, setCustomEditing } = useAgentsStore();
@@ -65,22 +65,22 @@ export function CustomAgents({ locale, disabled }: { locale: Locale; disabled: b
     } catch { setFailed(true); } finally { setPending(false); }
   };
 
-  return <details className="mt-3 border-t border-slate-800 pt-3">
-    <summary className="cursor-pointer text-sm text-slate-300">{t(locale, "custom.title")}</summary>
-    <p className="my-2 text-xs text-slate-400">{t(locale, "custom.help")}</p>
-    {disabled && <p className="mb-2 text-xs text-amber-200">{t(locale, "custom.disconnect")}</p>}
-    {failed && <div role="alert" className="mb-2 text-xs text-red-300"><p>{t(locale, "custom.failed")}</p>{detail && <p>{detail}</p>}</div>}
+  return <details className="mt-3 border-t border-ui-border-soft pt-3">
+    <summary className="cursor-pointer text-sm text-ui-secondary">{t(locale, "custom.title")}</summary>
+    <p className="my-2 text-xs text-ui-muted">{t(locale, "custom.help")}</p>
+    {disabled && <p className="mb-2 text-xs text-ui-warning">{t(locale, "custom.disconnect")}</p>}
+    {failed && <div role="alert" className="mb-2 text-xs text-ui-error"><p>{t(locale, "custom.failed")}</p>{detail && <p>{detail}</p>}</div>}
     {!loaded && <button type="button" className={button} onClick={() => void load()}>{t(locale, "agents.refresh")}</button>}
     {!editing && <div className="space-y-2">
-      {profiles.map((profile) => <div key={profile.id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+      {profiles.map((profile) => <div key={profile.id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-ui-secondary">
         <span>{profile.name}</span>
         <div className="flex gap-2">
           <button type="button" className={button} disabled={disabled || pending} onClick={() => edit(profile)}>{t(locale, "custom.edit")}</button>
           <button type="button" className={button} disabled={disabled || pending} onClick={() => { setRemoveId(profile.id); setCustomEditing(true); }}>{t(locale, "custom.remove")}</button>
         </div>
       </div>)}
-      {removeId && <div className="space-y-2 rounded border border-amber-900 p-2">
-        <p className="text-xs text-amber-200">{t(locale, "custom.removeHelp")}</p>
+      {removeId && <div className="space-y-2 rounded border border-ui-warning p-2">
+        <p className="text-xs text-ui-warning">{t(locale, "custom.removeHelp")}</p>
         <button type="button" className={button} disabled={disabled || pending} onClick={() => void remove(removeId)}>{t(locale, "custom.confirmRemove")}</button>{" "}
         <button type="button" className={button} disabled={pending} onClick={close}>{t(locale, "custom.cancel")}</button>
       </div>}
@@ -88,12 +88,12 @@ export function CustomAgents({ locale, disabled }: { locale: Locale; disabled: b
     </div>}
     {editing && <form onSubmit={(event) => { event.preventDefault(); void save(); }} className="space-y-3">
       <fieldset disabled={disabled || pending} className="space-y-3">
-        {id && <p className="break-all text-xs text-slate-500">ID: {id}</p>}
-        <label className="block text-xs text-slate-400">{t(locale, "custom.name")}<input className={field} value={name} required maxLength={100} onChange={(e) => setName(e.target.value)} /></label>
-        <label className="block text-xs text-slate-400">{t(locale, "custom.executable")}<input className={field} value={executable} required placeholder="/path with spaces/agent" onChange={(e) => setExecutable(e.target.value)} /></label>
-        <label className="block text-xs text-slate-400">{t(locale, "custom.args")}<textarea className={`${field} font-mono`} rows={3} value={args} onChange={(e) => setArgs(e.target.value)} spellCheck={false} /></label>
-        <p className="text-xs text-slate-500">{t(locale, "custom.argsHelp")}</p>
-        <label className="block text-xs text-slate-400">{t(locale, "custom.env")}<textarea className={`${field} font-mono`} rows={3} value={env} onChange={(e) => setEnv(e.target.value)} spellCheck={false} /></label>
+        {id && <p className="break-all text-xs text-ui-faint">ID: {id}</p>}
+        <label className="block text-xs text-ui-muted">{t(locale, "custom.name")}<input className={field} value={name} required maxLength={100} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="block text-xs text-ui-muted">{t(locale, "custom.executable")}<input className={field} value={executable} required placeholder="/path with spaces/agent" onChange={(e) => setExecutable(e.target.value)} /></label>
+        <label className="block text-xs text-ui-muted">{t(locale, "custom.args")}<textarea className={`${field} font-mono`} rows={3} value={args} onChange={(e) => setArgs(e.target.value)} spellCheck={false} /></label>
+        <p className="text-xs text-ui-faint">{t(locale, "custom.argsHelp")}</p>
+        <label className="block text-xs text-ui-muted">{t(locale, "custom.env")}<textarea className={`${field} font-mono`} rows={3} value={env} onChange={(e) => setEnv(e.target.value)} spellCheck={false} /></label>
         <button type="submit" className={button}>{t(locale, "custom.save")}</button>{" "}
         <button type="button" className={button} onClick={close}>{t(locale, "custom.cancel")}</button>
       </fieldset>

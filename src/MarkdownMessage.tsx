@@ -21,9 +21,9 @@ function CodeBlock({ children, locale }: { children?: ReactNode; locale: Locale 
   const text = String(props.children ?? "").replace(/\n$/, "");
   const language = /language-([^\s]+)/.exec(props.className ?? "")?.[1];
   return (
-    <div className="my-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-1.5">
-        <span className="text-xs text-slate-500">{language ?? t(locale, "chat.code")}</span>
+    <div className="my-3 overflow-hidden rounded-lg border border-ui-border bg-ui-code">
+      <div className="flex items-center justify-between gap-2 border-b border-ui-border-soft px-3 py-1.5">
+        <span className="text-xs text-ui-faint">{language ?? t(locale, "chat.code")}</span>
         <CopyButton text={text} locale={locale} label="chat.copyCode" />
       </div>
       <pre className="overflow-x-auto p-3 text-xs leading-6"><code>{text}</code></pre>
@@ -36,7 +36,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({ text, locale }: {
   const components = useMemo<Components>(() => ({
         pre: ({ children }) => <CodeBlock locale={locale}>{children}</CodeBlock>,
         // Never fetch remote image URLs just because an agent printed one.
-        img: ({ alt }) => <span className="text-slate-400">[{t(locale, "chat.image")}{alt ? `: ${alt}` : ""}]</span>,
+        img: ({ alt }) => <span className="text-ui-muted">[{t(locale, "chat.image")}{alt ? `: ${alt}` : ""}]</span>,
         a: ({ href, children }) => {
           const url = href ? safeWebUrl(href) : undefined;
           return url ? <a href={url} rel="noreferrer" onClick={(event) => {

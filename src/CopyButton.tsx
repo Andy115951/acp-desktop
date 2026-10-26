@@ -25,7 +25,7 @@ export async function copyText(text: string): Promise<void> {
 export function CopyButton({ text, locale, label = "chat.copy" }: { text: string; locale: Locale; label?: "chat.copy" | "chat.copyCode" }) {
   const [result, setResult] = useState<{ text: string; ok: boolean } | null>(null);
   return (
-    <button type="button" className="rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:text-white" onClick={() => {
+    <button type="button" className="rounded border border-ui-border px-2 py-1 text-xs text-ui-muted hover:text-ui-primary" onClick={() => {
       void copyText(text).then(() => setResult({ text, ok: true }), () => setResult({ text, ok: false }));
     }} aria-label={t(locale, label)}>
       <span role="status">{t(locale, result?.text === text ? result.ok ? "chat.copied" : "chat.copyFailed" : label)}</span>

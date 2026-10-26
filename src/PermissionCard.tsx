@@ -27,15 +27,15 @@ export function PermissionCard({
   return (
     <div
       data-testid="permission-card"
-      className="rounded-lg border border-amber-700/70 bg-slate-900/95 p-3 shadow-lg shadow-black/20 space-y-2 ring-1 ring-amber-900/40"
+      className="rounded-lg border border-ui-warning/70 bg-ui-panel/95 p-3 shadow-lg shadow-black/20 space-y-2 ring-1 ring-ui-warning/40"
       role="group"
       aria-label={t(locale, "permission.ariaLabel")}
     >
-      <h3 className="text-sm font-semibold text-amber-50">
+      <h3 className="text-sm font-semibold text-ui-warning">
         {permission.title}
       </h3>
       {permission.tool ? <ToolDetails tool={permission.tool} locale={locale} /> :
-        <p className="text-xs text-slate-400 break-all">{permission.detail}</p>}
+        <p className="text-xs text-ui-muted break-all">{permission.detail}</p>}
       <div className="flex flex-wrap gap-2 pt-1">
         {permission.options.map((opt, idx) => {
           const isAllow = opt.kind.startsWith("Allow");
@@ -50,7 +50,7 @@ export function PermissionCard({
                   ? "bg-emerald-700 text-white"
                   : opt.kind.startsWith("Reject")
                     ? "bg-red-800 text-white"
-                    : "border border-slate-600 text-slate-200"
+                    : "border border-ui-border-strong text-ui-primary"
               }`}
             >
               {opt.name}
@@ -60,12 +60,12 @@ export function PermissionCard({
         <button
           type="button"
           onClick={() => onRespond(null)}
-          className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-300"
+          className="rounded-md border border-ui-border-strong px-3 py-1.5 text-xs text-ui-secondary"
         >
           {t(locale, "permission.cancel")}
         </button>
       </div>
-      <p className="text-[10px] text-slate-500 pt-0.5">
+      <p className="text-[10px] text-ui-faint pt-0.5">
         {t(locale, "permission.hotkeys")}
       </p>
     </div>

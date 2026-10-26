@@ -22,8 +22,11 @@ import { t, type Locale } from "./lib/i18n";
 import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
 import { useUiStore } from "./store/ui";
+import type { Theme } from "./lib/theme";
 
 export default function App() {
+  // Overlay title bars are macOS-only; other platforms retain native decorations.
+  const macOS = typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
   const {
     agents,
     selectedAgentId,
@@ -74,7 +77,7 @@ export default function App() {
     clearTranscript,
     bindEvents,
   } = useSessionStore();
-  const { locale, hydrateLocale, setLocale } = useUiStore();
+  const { locale, hydrateLocale, setLocale, theme, setTheme } = useUiStore();
   const composingRef = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches);
@@ -184,11 +187,11 @@ export default function App() {
   const contextLocked = connected || busy || !!permission || switching || customEditing;
 
   return (
-    <main className="chat-shell" data-sidebar-open={sidebarOpen}>
+    <main className="chat-shell" data-sidebar-open={sidebarOpen} data-macos={macOS}>
       <aside id="chat-sidebar" className="chat-sidebar" aria-label={t(locale, "layout.sidebar")} hidden={!sidebarOpen}>
-        <div className="sidebar-brand">
+        <div className="sidebar-brand" data-tauri-drag-region={macOS ? "deep" : undefined}>
           <span className="brand-mark" aria-hidden="true"><ChatIcon name="chat" /></span>
-          <span>ACP <span className="font-normal text-slate-400">Desktop</span></span>
+          <span>ACP <span className="font-normal text-ui-muted">Desktop</span></span>
           <button type="button" className="icon-button ml-auto" onClick={closeSidebar} aria-label={t(locale, "layout.hideSidebar")}>
             <ChatIcon name="panel" />
           </button>
@@ -221,7 +224,7 @@ export default function App() {
           <ErrorNotice error={detectError} locale={locale} />
         ) : null}
         {authHint ? (
-          <p className="mb-3 rounded-md border border-sky-900/50 bg-sky-950/30 px-3 py-2 text-xs text-sky-200/90">
+          <p className="mb-3 rounded-md border border-ui-link/50 bg-ui-info-bg/30 px-3 py-2 text-xs text-ui-link">
             {authHint}
           </p>
         ) : null}
@@ -238,12 +241,12 @@ export default function App() {
                   disabled={!clickable || busy || configuring || !!permission || switching || customEditing}
                   onClick={() => selectAgent(agent.id)}
                   className={`flex w-full items-center justify-between gap-3 py-2.5 text-left ${
-                    available ? "text-slate-100" : "text-slate-500"
+                    available ? "text-ui-primary" : "text-ui-faint"
                   } ${
                     selectedRow
-                      ? "rounded-md bg-slate-800/80 px-2 -mx-2"
+                      ? "rounded-md bg-ui-surface-hover/80 px-2 -mx-2"
                       : ""
-                  } ${clickable ? "hover:bg-slate-800/40" : "cursor-default"}`}
+                  } ${clickable ? "hover:bg-ui-surface-hover/40" : "cursor-default"}`}
                 >
                   <div>
                     <div className="flex items-center gap-2">
@@ -255,21 +258,21 @@ export default function App() {
                       <span className="font-medium">
                         {agent.name}
                         {!agent.connectable ? (
-                          <span className="ml-2 text-xs font-normal text-slate-600">
+                          <span className="ml-2 text-xs font-normal text-ui-faint">
                             {t(locale, "agents.later")}
                           </span>
                         ) : selectedRow ? (
-                          <span className="ml-2 text-xs font-normal text-sky-400">
+                          <span className="ml-2 text-xs font-normal text-ui-link">
                             {t(locale, "agents.selected")}
                           </span>
                         ) : null}
                       </span>
                     </div>
-                    <p className="pl-4 text-xs text-slate-500">
+                    <p className="pl-4 text-xs text-ui-faint">
                       <code>{agent.binary}</code>
                     </p>
                     {detail ? (
-                      <p className="pl-4 pt-0.5 text-xs text-amber-200/80">
+                      <p className="pl-4 pt-0.5 text-xs text-ui-warning">
                         {detail}
                       </p>
                     ) : null}
@@ -277,8 +280,8 @@ export default function App() {
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs ${
                       available
-                        ? "bg-emerald-950 text-emerald-300 ring-1 ring-emerald-800"
-                        : "bg-slate-950 text-slate-500 ring-1 ring-slate-800"
+                        ? "bg-ui-accent-surface text-ui-success ring-1 ring-ui-success"
+                        : "bg-ui-code text-ui-faint ring-1 ring-ui-border"
                     }`}
                   >
                     {available
@@ -295,25 +298,25 @@ export default function App() {
           </details>
           <details className="sidebar-details">
             <summary>{t(locale, "layout.sessionDetails")}</summary>
-            <p className="mt-3 break-all text-xs leading-6 text-slate-400">
+            <p className="mt-3 break-all text-xs leading-6 text-ui-muted">
               {t(locale, "session.cwd")}: {cwd ?? "—"}<br />
               {t(locale, "session.session")}: {sessionId ?? savedSessionId ?? "—"}
             </p>
-            {loadSessionSupported !== null && <p className="mt-2 text-xs text-slate-400">{t(locale, loadSessionSupported ? "session.loadOk" : "session.loadUnsupported")}</p>}
+            {loadSessionSupported !== null && <p className="mt-2 text-xs text-ui-muted">{t(locale, loadSessionSupported ? "session.loadOk" : "session.loadUnsupported")}</p>}
           </details>
       <details className="sidebar-details space-y-3">
-        <summary className="cursor-pointer text-xs text-slate-500">{t(locale, "dev.title")}</summary>
+        <summary className="cursor-pointer text-xs text-ui-faint">{t(locale, "dev.title")}</summary>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs text-amber-200/70">
+            <p className="text-xs text-ui-warning">
               {t(locale, "dev.blurbBefore")}
-              <code className="text-amber-100/90">
+              <code className="text-ui-warning">
                 session/request_permission
               </code>
               {t(locale, "dev.blurbAfter")}
             </p>
           </div>
-          <label className="flex items-center gap-2 text-xs text-amber-100">
+          <label className="flex items-center gap-2 text-xs text-ui-warning">
             <input
               type="checkbox"
               checked={!!override?.usingOverride}
@@ -321,12 +324,12 @@ export default function App() {
               onChange={(e) => {
                 void setFakeAgent(e.target.checked).catch(() => undefined);
               }}
-              className="rounded border-amber-700"
+              className="rounded border-ui-warning"
             />
             {t(locale, "dev.useFake")}
           </label>
         </div>
-        <p className="text-xs text-amber-200/60 break-all">
+        <p className="text-xs text-ui-warning break-all">
           {t(locale, "dev.mode")}: {override?.mode ?? "…"} ·{" "}
           {t(locale, "dev.cmd")}:{" "}
           <code>{override?.command?.join(" ") ?? "—"}</code>
@@ -339,15 +342,25 @@ export default function App() {
       </details>
         </div>
         <div className="sidebar-footer">
-          <span className="text-xs text-slate-500">{t(locale, "badge.acpClient")}</span>
-          <select value={locale} onChange={(e) => setLocale(e.target.value as Locale)} aria-label={t(locale, "language.label")} className="locale-select">
-            <option value="en">English</option><option value="zh-CN">简体中文</option>
-          </select>
+          <div className="sidebar-preferences">
+            <label htmlFor="theme-select" className="text-xs text-ui-muted">{t(locale, "theme.label")}</label>
+            <select id="theme-select" className="locale-select theme-select" value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
+              <option value="system">{t(locale, "theme.system")}</option>
+              <option value="light">{t(locale, "theme.light")}</option>
+              <option value="dark">{t(locale, "theme.dark")}</option>
+            </select>
+          </div>
+          <div className="sidebar-preferences">
+            <span className="text-xs text-ui-faint">{t(locale, "badge.acpClient")}</span>
+            <select value={locale} onChange={(e) => setLocale(e.target.value as Locale)} aria-label={t(locale, "language.label")} className="locale-select">
+              <option value="en">English</option><option value="zh-CN">简体中文</option>
+            </select>
+          </div>
         </div>
       </aside>
 
       <section className="conversation-pane" aria-label={t(locale, "chat.transcript")}>
-        <header className="conversation-header">
+        <header className="conversation-header" data-tauri-drag-region={macOS ? "deep" : undefined}>
           <button ref={sidebarToggleRef} type="button" className="icon-button" aria-controls="chat-sidebar" aria-expanded={sidebarOpen}
             aria-label={t(locale, sidebarOpen ? "layout.hideSidebar" : "layout.showSidebar")} onClick={() => setSidebarOpen(!sidebarOpen)}>
             <ChatIcon name="panel" />
@@ -383,7 +396,7 @@ export default function App() {
         </div>
         {error && <div className="conversation-notice"><ErrorNotice error={error} locale={locale} /></div>}
         {detectError && !sidebarOpen && <div className="conversation-notice"><ErrorNotice error={detectError} locale={locale} /></div>}
-        {loadSessionSupported === false && <p className="conversation-notice text-xs text-amber-200">{t(locale, "session.resumeDisabledBefore")}<code>loadSession</code>{t(locale, "session.resumeDisabledAfter")}</p>}
+        {loadSessionSupported === false && <p className="conversation-notice text-xs text-ui-warning">{t(locale, "session.resumeDisabledBefore")}<code>loadSession</code>{t(locale, "session.resumeDisabledAfter")}</p>}
 
         <ChatTranscript lines={lines} locale={locale} resetKey={`${selectedAgentId}:${cwd}:${sessionId}`} fill
           agentName={selected?.name} emptyState={<div className="chat-welcome">
@@ -398,7 +411,7 @@ export default function App() {
 
         <footer className="composer-dock">
           {connected && <details className="session-options">
-            <summary>{t(locale, "layout.sessionOptions")}{configError && <span className="ml-2 text-amber-200">{t(locale, "layout.configFailed")}</span>}</summary>
+            <summary>{t(locale, "layout.sessionOptions")}{configError && <span className="ml-2 text-ui-warning">{t(locale, "layout.configFailed")}</span>}</summary>
             <div className="session-options-content"><AgentSessionInfo metadata={metadata?.sessionId === sessionId ? metadata : null} locale={locale}
               disabled={busy || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /></div>
           </details>}
