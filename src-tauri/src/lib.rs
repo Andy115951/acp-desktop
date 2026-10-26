@@ -1,3 +1,5 @@
+#[cfg(all(unix, any(target_os = "macos", test)))]
+mod shell_path;
 mod agent_backend;
 mod custom_agents;
 mod acp_host;
@@ -187,6 +189,8 @@ async fn session_status(app: tauri::AppHandle) -> SessionStatus {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    shell_path::initialize();
     let builder = tauri::Builder::default();
     // Keep background launches from activating over the user's current app.
     #[cfg(target_os = "macos")]
