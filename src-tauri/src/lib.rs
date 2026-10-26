@@ -4,6 +4,7 @@ mod acp_host;
 mod session_discovery;
 mod session_metadata;
 mod session_config;
+mod protocol_init;
 
 use acp_host::{AcpSession, AppState, SessionStatus};
 use agent_backend::{

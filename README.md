@@ -152,6 +152,9 @@ replace the command list with an empty list and update usage to 4,096 tokens.
 accepted, Rejected model fails with synthetic error data, and Slow model delays
 its response for five seconds to exercise Disconnect. `fake:config-update` sends
 a live mode update, while `fake:clear-config` removes all configuration controls.
+`--unsupported-protocol` replies with version 2 to verify rejection before any
+session operation. This client explicitly requests ACP v1; other negotiated
+versions close the connection with guidance to use a v1-compatible agent.
 These fixtures do not call a vendor API or perform the proposed tool actions.
 For conversation rendering, `fake:stream` emits thought/reply chunks and
 `fake:long-stream` emits 180 lines over several seconds for scroll testing.

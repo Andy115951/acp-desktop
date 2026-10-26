@@ -125,7 +125,7 @@ async fn main() -> agent_client_protocol::Result<()> {
                     capabilities = capabilities.session_capabilities(SessionCapabilities::new().list(SessionListCapabilities::new()));
                 }
                 responder.respond(
-                    InitializeResponse::new(initialize.protocol_version)
+                    InitializeResponse::new(if std::env::args().any(|arg| arg == "--unsupported-protocol") { agent_client_protocol::schema::ProtocolVersion::from(2u16) } else { initialize.protocol_version })
                         .agent_capabilities(capabilities),
                 )
             },
