@@ -25,6 +25,8 @@ import { useUiStore } from "./store/ui";
 import type { Theme } from "./lib/theme";
 
 export default function App() {
+  // Overlay title bars are macOS-only; other platforms retain native decorations.
+  const macOS = typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
   const {
     agents,
     selectedAgentId,
@@ -185,9 +187,9 @@ export default function App() {
   const contextLocked = connected || busy || !!permission || switching || customEditing;
 
   return (
-    <main className="chat-shell" data-sidebar-open={sidebarOpen}>
+    <main className="chat-shell" data-sidebar-open={sidebarOpen} data-macos={macOS}>
       <aside id="chat-sidebar" className="chat-sidebar" aria-label={t(locale, "layout.sidebar")} hidden={!sidebarOpen}>
-        <div className="sidebar-brand">
+        <div className="sidebar-brand" data-tauri-drag-region={macOS ? "deep" : undefined}>
           <span className="brand-mark" aria-hidden="true"><ChatIcon name="chat" /></span>
           <span>ACP <span className="font-normal text-ui-muted">Desktop</span></span>
           <button type="button" className="icon-button ml-auto" onClick={closeSidebar} aria-label={t(locale, "layout.hideSidebar")}>
@@ -358,7 +360,7 @@ export default function App() {
       </aside>
 
       <section className="conversation-pane" aria-label={t(locale, "chat.transcript")}>
-        <header className="conversation-header">
+        <header className="conversation-header" data-tauri-drag-region={macOS ? "deep" : undefined}>
           <button ref={sidebarToggleRef} type="button" className="icon-button" aria-controls="chat-sidebar" aria-expanded={sidebarOpen}
             aria-label={t(locale, sidebarOpen ? "layout.hideSidebar" : "layout.showSidebar")} onClick={() => setSidebarOpen(!sidebarOpen)}>
             <ChatIcon name="panel" />

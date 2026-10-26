@@ -285,3 +285,13 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
 .sidebar-footer { flex-direction: column; align-items: stretch; gap: 8px; }
 .sidebar-preferences { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .theme-select { max-width: 135px; }
+
+/* macOS native traffic lights share the app header instead of a separate title bar.
+   Keep their hit area clear even when the sidebar is hidden or fills a narrow window. */
+.chat-shell[data-macos="true"] .sidebar-brand { padding-left: 96px; padding-right: 14px; }
+.chat-shell[data-macos="true"] .sidebar-brand > .brand-mark { display: none; }
+.chat-shell[data-macos="true"][data-sidebar-open="false"] .conversation-header { padding-left: 96px; }
+[data-tauri-drag-region] { user-select: none; -webkit-user-select: none; }
+@media (min-width: 761px) and (max-width: 900px) {
+  .chat-shell[data-macos="true"] .sidebar-brand > span:not(.brand-mark) > span { display: none; }
+}
