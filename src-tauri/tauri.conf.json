@@ -14,7 +14,8 @@
       {
         "title": "ACP Desktop",
         "width": 720,
-        "height": 520
+        "height": 520,
+        "focus": false
       }
     ],
     "security": {

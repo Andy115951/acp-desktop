@@ -45,6 +45,8 @@ React (Vite)  --Tauri IPC-->  Rust host (Tauri 2)
 
 M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://github.com/Andy115951/acp-desktop/pull/8)): `initialize` → `session/new` | `session/load` → streaming `session/update` → Ask permission cards → Resume/New session UI. Preferences (`tauri-plugin-store`) keep lightweight per-agent session metadata and the last workspace folder (no chat history locally).
 
+**Startup:** the window opens without requesting initial focus. On macOS, launching while another app is active leaves that app active; click ACP Desktop when you are ready to use it.
+
 **Agent session information:** while connected, the app shows slash commands and context usage reported by the current agent. A command button inserts its name before your draft; add arguments and send explicitly. Reports refresh during a session and reset on disconnect or context change. Missing reports remain unknown, and empty command lists are distinct from missing reports. Token counts are shown exactly as reported; the app does not estimate usage or normalize prices.
 
 **Session configuration:** the connected agent can report select controls for model, mode, reasoning or other settings, including grouped choices. The app uses the reported IDs, current values and choices without hard-coded vendor defaults. Changing a choice waits for the agent response; rejected or timed-out changes retain the last reported values and show a retry notice. Controls and prompt sending are disabled while a change is pending, but Disconnect remains available. Live reports replace the option list. Missing reports remain unknown; unsupported control types are read-only and boolean controls are not advertised by this client. Configuration is session-local and is refreshed by the agent on Resume.
@@ -71,7 +73,7 @@ Plan board: [acp-desktop project](https://github.com/users/Andy115951/projects/2
 
 ## Develop
 
-Prerequisites: [Node.js](https://nodejs.org/) 22.12+ (or a supported newer LTS), [Rust](https://rustup.rs/), and OS webview deps ([Tauri prerequisites](https://tauri.app/start/prerequisites/) — on macOS that means Xcode CLT / WebKit).
+Prerequisites: [Node.js](https://nodejs.org/) 22.12+ (or a supported newer LTS), [Rust](https://rustup.rs/) 1.90+, and OS webview deps ([Tauri prerequisites](https://tauri.app/start/prerequisites/) — on macOS that means Xcode CLT / WebKit).
 
 ```bash
 npm install
