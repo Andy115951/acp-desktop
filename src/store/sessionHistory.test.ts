@@ -342,3 +342,70 @@ describe("agent session information", () => {
     expect(useSessionStore.getState().metadata).toBeNull(); cleanup();
   });
 });
+
+describe("advertised session configuration", () => {
+  const option = { id: "model", name: "Model", description: null, currentValue: "balanced", writable: true,
+    choices: [{ value: "balanced", name: "Balanced", group: null }, { value: "fast", name: "Fast", group: null }] };
+  const info = { agentId: "codex", cwd: "/workspace", sessionId: "active", configOptions: [option] };
+  async function start() {
+    const cleanup = await useSessionStore.getState().bindEvents();
+    await useSessionStore.getState().connect("new");
+    useSessionStore.setState({ connected: true, sessionId: "active" });
+    mocks.handlers.get("acp://metadata")!({ payload: info });
+    return cleanup;
+  }
+  it("waits for agent-reported values instead of optimistically selecting the request", async () => {
+    const cleanup = await start();
+    let finish!: () => void;
+    mocks.invoke.mockImplementation(command => command === "set_session_config" ? new Promise<void>(resolve => { finish = resolve; }) : Promise.resolve());
+    const pending = useSessionStore.getState().setConfig("model", "fast");
+    expect(useSessionStore.getState()).toMatchObject({ configuring: true, busy: true });
+    expect(useSessionStore.getState().metadata?.configOptions?.[0].currentValue).toBe("balanced");
+    const lines = useSessionStore.getState().lines;
+    mocks.handlers.get("acp://metadata")!({ payload: { ...info, configOptions: [{ ...option, currentValue: "fast" }] } });
+    finish(); await pending;
+    expect(useSessionStore.getState().metadata?.configOptions?.[0].currentValue).toBe("fast");
+    expect(useSessionStore.getState()).toMatchObject({ configuring: false, busy: false, configError: false });
+    expect(useSessionStore.getState().lines).toBe(lines);
+    expect(mocks.invoke).toHaveBeenCalledWith("set_session_config", { sessionId: "active", configId: "model", value: "fast" }); cleanup();
+  });
+  it("keeps reported values and a generic retry notice after rejection without leaking errors", async () => {
+    const cleanup = await start();
+    mocks.invoke.mockRejectedValueOnce(new Error("secret-provider-data"));
+    await useSessionStore.getState().setConfig("model", "fast");
+    expect(useSessionStore.getState()).toMatchObject({ busy: false, configuring: false, configError: true, error: null });
+    expect(useSessionStore.getState().metadata?.configOptions?.[0].currentValue).toBe("balanced");
+    expect(JSON.stringify(useSessionStore.getState())).not.toContain("secret-provider-data");
+    mocks.invoke.mockResolvedValueOnce(undefined);
+    await useSessionStore.getState().setConfig("model", "fast");
+    expect(useSessionStore.getState().configError).toBe(false); cleanup();
+  });
+  it("rejects unadvertised values, busy/permission states and revoked or unsupported controls", async () => {
+    const cleanup = await start();
+    mocks.invoke.mockClear();
+    await useSessionStore.getState().setConfig("unknown", "fast");
+    await useSessionStore.getState().setConfig("model", "invented");
+    useSessionStore.setState({ busy: true });
+    await useSessionStore.getState().setConfig("model", "fast");
+    useSessionStore.setState({ busy: false, permission: { requestId: 1, title: "Ask", detail: "", options: [] } });
+    await useSessionStore.getState().setConfig("model", "fast");
+    useSessionStore.setState({ permission: null });
+    mocks.handlers.get("acp://metadata")!({ payload: { ...info, configOptions: [{ ...option, writable: false }] } });
+    await useSessionStore.getState().setConfig("model", "fast");
+    mocks.handlers.get("acp://metadata")!({ payload: { ...info, configOptions: [] } });
+    await useSessionStore.getState().setConfig("model", "fast");
+    expect(mocks.invoke).not.toHaveBeenCalled(); cleanup();
+  });
+  it("ignores delayed failures after disconnect even if the replacement reuses the session id", async () => {
+    const cleanup = await start();
+    let fail!: (error: Error) => void;
+    mocks.invoke.mockImplementation(command => command === "set_session_config" ? new Promise((_resolve, reject) => { fail = reject; }) : Promise.resolve());
+    const pending = useSessionStore.getState().setConfig("model", "fast");
+    await useSessionStore.getState().disconnect();
+    const replacement = { ...info, configOptions: [{ ...option, currentValue: "fast" }] };
+    useSessionStore.setState({ connected: true, sessionId: "active", metadata: replacement, busy: true });
+    fail(new Error("old failure")); await pending;
+    expect(useSessionStore.getState()).toMatchObject({ busy: true, configuring: false, configError: false });
+    expect(useSessionStore.getState().metadata).toBe(replacement); cleanup();
+  });
+});

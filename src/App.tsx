@@ -36,6 +36,9 @@ export default function App() {
     cwd,
     catalog,
     catalogError,
+    configuring,
+    configError,
+    setConfig,
     metadata,
     insertCommand,
     sessionListSupported,
@@ -151,7 +154,7 @@ export default function App() {
   const uiGates = {
     cwd,
     connected,
-    busy: busy || switching,
+    busy: busy || switching || configuring,
     permissionOpen: !!permission,
     draftTrimmed: !!draft.trim(),
     savedSessionId,
@@ -161,7 +164,7 @@ export default function App() {
   const canResume = canResumeSession(uiGates);
   const canConnectNew = canConnectNewSession(uiGates);
   const canSend = canSendPrompt(uiGates);
-  const canCancel = canCancelPrompt(uiGates);
+  const canCancel = !configuring && canCancelPrompt(uiGates);
   const authHint = agentAuthHint(selectedAgentId, usingFake, locale);
 
   return (
@@ -431,7 +434,7 @@ export default function App() {
         </ChatTranscript>
 
         {connected ? <AgentSessionInfo metadata={metadata?.sessionId === sessionId ? metadata : null} locale={locale}
-          disabled={busy || switching || !!permission} onCommand={insertCommand} /> : null}
+          disabled={busy || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /> : null}
 
         <div className="flex items-end gap-2">
           <textarea

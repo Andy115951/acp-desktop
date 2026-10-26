@@ -78,6 +78,9 @@ type SessionState = {
   sessionListSupported: boolean | null;
   sessionListIncomplete: boolean;
   metadata: SessionMetadata | null;
+  configuring: boolean;
+  configError: boolean;
+  setConfig: (id: string, value: string) => Promise<void>;
   insertCommand: (name: string) => void;
   recentWorkspaces: RecentWorkspace[];
   workspaceError: boolean;
@@ -156,7 +159,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   catalog: emptyCatalog(),
   catalogError: false,
   sessionListSupported: null,
-  sessionListIncomplete: false, metadata: null,
+  sessionListIncomplete: false, metadata: null, configuring: false, configError: false,
   recentWorkspaces: [],
   workspaceError: false,
   renameSavedSession: (title) => editSavedEntry({ type: "rename", title }),
@@ -178,7 +181,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         workspaceError = true;
       }
       if (generation !== contextGeneration || currentAgentId() !== agentId) return;
-      set({ ...context, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null, sessionListSupported: null, sessionListIncomplete: false, metadata: null,
+      set({ ...context, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null, sessionListSupported: null, sessionListIncomplete: false, metadata: null, configuring: false, configError: false,
         loadSessionSupported: null, lines: [], permission: null, draft: "" });
     } finally {
       if (generation === contextGeneration) set({ switching: false });
@@ -201,9 +204,26 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   permission: null,
   draft: "",
   setDraft: (v) => set({ draft: v }),
+  setConfig: async (id, value) => {
+    const state = get();
+    const option = state.metadata?.configOptions?.find(option => option.id === id);
+    if (!state.connected || state.busy || state.configuring || state.switching || state.permission || !state.sessionId
+      || state.metadata?.sessionId !== state.sessionId || !option?.writable || option.currentValue === value
+      || !option.choices.some(choice => choice.value === value)) return;
+    const generation = connectionGeneration;
+    const sessionId = state.sessionId;
+    set({ configuring: true, busy: true, configError: false });
+    try {
+      await invoke("set_session_config", { sessionId, configId: id, value });
+    } catch {
+      if (generation === connectionGeneration && get().sessionId === sessionId) set({ configError: true });
+    } finally {
+      if (generation === connectionGeneration && get().sessionId === sessionId) set({ configuring: false, busy: false });
+    }
+  },
   insertCommand: (name) => {
     const state = get();
-    if (!state.connected || state.busy || state.permission || state.switching || state.metadata?.sessionId !== state.sessionId
+    if (!state.connected || state.busy || state.configuring || state.permission || state.switching || state.metadata?.sessionId !== state.sessionId
       || !state.metadata?.commands?.some(command => command.name === name)) return;
     set({ draft: `/${name} ${state.draft}` });
   },
@@ -249,7 +269,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!get().cwd) { await get().hydrateFromPrefs(); return; }
     const generation = ++contextGeneration;
     const cwd = get().cwd;
-    set({ ...sessionPatchAfterAgentSwitch(null), catalog: emptyCatalog(), switching: true, draft: "", sessionListSupported: null, sessionListIncomplete: false, metadata: null });
+    set({ ...sessionPatchAfterAgentSwitch(null), catalog: emptyCatalog(), switching: true, draft: "", sessionListSupported: null, sessionListIncomplete: false, metadata: null, configuring: false, configError: false });
     const context = await loadCatalogContext(agentId, cwd);
     if (generation !== contextGeneration || currentAgentId() !== agentId || get().cwd !== cwd) return;
     set({ ...context, switching: false });
@@ -283,7 +303,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       busy: true,
       sessionId: null,
       sessionListSupported: null,
-      sessionListIncomplete: false, metadata: null,
+      sessionListIncomplete: false, metadata: null, configuring: false, configError: false,
       // Clear prior transcript on New or Resume so old turns never mix with
       // a fresh session/new or session/load. Status marker distinguishes an
       // empty connect from "events never arrived".
@@ -354,7 +374,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         connected: false,
         busy: false,
         sessionId: null,
-        metadata: null,
+        metadata: null, configuring: false, configError: false,
         permission: null,
         lines: recordToolDecision(get().lines, get().permission?.tool?.id, "cancelled"),
       });
@@ -364,7 +384,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const text = get().draft;
     if (!text.trim()) return;
     // Ask modal owns the turn; never queue a second prompt underneath it.
-    if (get().permission || !get().connected || get().busy) return;
+    if (get().permission || !get().connected || get().busy || get().configuring) return;
     const generation = connectionGeneration;
     set({
       draft: "",
@@ -449,7 +469,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const state = get();
       if (update.agentId !== currentAgentId() || update.agentId !== connectionAgentId || update.cwd !== state.cwd
         || (!state.connected && !state.busy) || (state.sessionId && state.sessionId !== update.sessionId)) return;
-      set({ metadata: mergeSessionMetadata(state.metadata, update) });
+      set({ metadata: mergeSessionMetadata(state.metadata, update), ...(update.configOptions ? { configError: false } : {}) });
     }));
     unsubs.push(
       await listen<{ kind: string; text: string; tool?: ToolData }>("acp://stream", (ev) => {
@@ -566,7 +586,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         }
 
         set({
-          ...(!ev.payload.connected ? { metadata: null } : {}),
+          ...(!ev.payload.connected ? { metadata: null, configuring: false, configError: false } : {}),
           connected: ev.payload.connected,
           cwd: cwd ?? get().cwd,
           sessionId: sessionId ?? (ev.payload.connected ? get().sessionId : null),

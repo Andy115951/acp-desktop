@@ -2,6 +2,7 @@ mod agent_backend;
 mod acp_host;
 mod session_discovery;
 mod session_metadata;
+mod session_config;
 
 use acp_host::{AcpSession, AppState, SessionStatus};
 use agent_backend::{
@@ -82,6 +83,16 @@ async fn send_prompt(app: tauri::AppHandle, text: String) -> Result<String, Stri
             .clone()
     };
     session.prompt(text).await
+}
+
+#[tauri::command]
+async fn set_session_config(app: tauri::AppHandle, session_id: String, config_id: String, value: String) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let session = {
+        let guard = state.inner.lock().map_err(|_| "session state lock poisoned".to_string())?;
+        guard.session.as_ref().ok_or_else(|| "not connected".to_string())?.clone()
+    };
+    session.configure(session_id, config_id, value).await
 }
 
 #[tauri::command]
@@ -178,6 +189,7 @@ pub fn run() {
             disconnect_agent,
             send_prompt,
             cancel_prompt,
+            set_session_config,
             respond_permission,
             get_agent_override,
             set_fake_agent,

@@ -47,6 +47,8 @@ M1 (scaffold) and **M2 (Grok ACP path)** are on `main` (merged via [#8](https://
 
 **Agent session information:** while connected, the app shows slash commands and context usage reported by the current agent. A command button inserts its name before your draft; add arguments and send explicitly. Reports refresh during a session and reset on disconnect or context change. Missing reports remain unknown, and empty command lists are distinct from missing reports. Token counts are shown exactly as reported; the app does not estimate usage or normalize prices.
 
+**Session configuration:** the connected agent can report select controls for model, mode, reasoning or other settings, including grouped choices. The app uses the reported IDs, current values and choices without hard-coded vendor defaults. Changing a choice waits for the agent response; rejected or timed-out changes retain the last reported values and show a retry notice. Controls and prompt sending are disabled while a change is pending, but Disconnect remains available. Live reports replace the option list. Missing reports remain unknown; unsupported control types are read-only and boolean controls are not advertised by this client. Configuration is session-local and is refreshed by the agent on Resume.
+
 **Saved sessions:** after Disconnect, choose an app-known session for the current agent/workspace and click Resume. New session keeps the earlier entries, and relaunch restores the most recently used session as the default. Existing cwd→sessionId preferences migrate automatically. Workspace/session selection is disabled until you disconnect; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. Use Recent workspaces to return to a previously opened folder. Rename changes only the app title; Archive app entry hides a record without deleting vendor history, and Archived sessions lets you restore it. These actions require a disconnected, idle session. Connect and Resume also discover vendor sessions when the agent advertises `sessionCapabilities.list`, following pagination for the selected workspace. Unsupported agents keep the app-known list. Discovery errors, repeated cursors or safety limits show an incomplete notice and keep existing entries usable (10 seconds total, up to 20 pages / 2,000 entries per connection). Local names, archives and stale-entry decisions are preserved.
 
 Protocol smoke against a local logged-in `grok agent stdio` (Mac): streaming turn + `session/load` resume both OK (`loadSession: true`). In-repo **fake ACP agent** + `cargo test -p fake-acp-agent` / `cargo test -p acp-desktop` + Vitest/`tsc` (CI on push/PR) cover `session/request_permission` allow/deny and `loadSession` replay without Grok. Host deadline-drains `session/load` ActiveSession replay so Resume does not miss `fake-agent: resumed`.
@@ -144,6 +146,10 @@ entry that the host must reject); `--list-error` advertises listing but fails th
 request so app-known fallback can be checked. `--session-info` reports two commands
 and 2,048 / 8,192 context tokens on new/load; send `fake:clear-session-info` to
 replace the command list with an empty list and update usage to 4,096 tokens.
+`--config-options` returns Model/Mode/Reasoning selectors on new/load; Fast is
+accepted, Rejected model fails with synthetic error data, and Slow model delays
+its response for five seconds to exercise Disconnect. `fake:config-update` sends
+a live mode update, while `fake:clear-config` removes all configuration controls.
 These fixtures do not call a vendor API or perform the proposed tool actions.
 For conversation rendering, `fake:stream` emits thought/reply chunks and
 `fake:long-stream` emits 180 lines over several seconds for scroll testing.
