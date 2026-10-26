@@ -30,12 +30,17 @@ export async function inspectBundle(app) {
   return files.sort();
 }
 
-export function validateVersions(pkg, lock, config, cargo, tag) {
+export function validateVersions(pkg, lock, config, cargo, cargoLock, tag) {
   const version = pkg.version;
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error('Invalid application version');
   const cargoVersion = cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
   if ([lock.version, lock.packages?.['']?.version, config.version, cargoVersion].some((value) => value !== version)) {
     throw new Error('package.json, package-lock.json, Cargo.toml and Tauri versions must agree');
+  }
+  const lockedApp = cargoLock.split(/^\[\[package\]\]\s*$/m)
+    .filter((block) => /^name\s*=\s*"acp-desktop"\s*$/m.test(block));
+  if (lockedApp.length !== 1 || lockedApp[0].match(/^version\s*=\s*"([^"]+)"/m)?.[1] !== version) {
+    throw new Error('Cargo.lock must contain the matching acp-desktop version');
   }
   if (tag && tag !== `v${version}`) throw new Error('Tag must match the application version');
   if (config.bundle.resources?.length || config.bundle.externalBin?.length) throw new Error('Bundled resources/sidecars require a new release audit');
@@ -65,7 +70,8 @@ async function main() {
   const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
   const config = JSON.parse(await readFile('src-tauri/tauri.conf.json', 'utf8'));
   const cargo = await readFile('src-tauri/Cargo.toml', 'utf8');
-  const version = validateVersions(pkg, lock, config, cargo,
+  const cargoLock = await readFile('Cargo.lock', 'utf8');
+  const version = validateVersions(pkg, lock, config, cargo, cargoLock,
     process.env.GITHUB_REF_TYPE === 'tag' ? process.env.GITHUB_REF_NAME : undefined);
   const app = path.resolve('target/aarch64-apple-darwin/release/bundle/macos/ACP Desktop.app');
   const files = await inspectBundle(app);

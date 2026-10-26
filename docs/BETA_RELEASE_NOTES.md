@@ -1,8 +1,8 @@
-# First beta — release notes draft
+# 0.1.0-beta.1 — release notes draft
 
 **Unreleased.** This is reviewable release copy, not an announcement or download.
-The source currently declares `0.1.0`; a beta tag/version and publication have not
-been finalized. Do not publish this draft as a completed release while the gates
+The source declares `0.1.0-beta.1`; the intended tag is `v0.1.0-beta.1`.
+No tag or public Release has been created. Do not publish this draft as a completed release while the gates
 below are open.
 
 ## What is included
@@ -16,6 +16,8 @@ below are open.
 - Agent-reported slash commands, context usage and session configuration choices,
   with unknown states when reports are absent and safe handling of rejected edits.
 - Custom executable/argument-array/non-secret environment profiles with stable IDs.
+- A conversation sidebar, dedicated transcript and fixed composer; System/Light/Dark
+  appearance with locally saved preferences and an integrated macOS title bar.
 - macOS startup that preserves the existing foreground application's focus.
 - Audited arm64 candidate archives with checksums, build manifests and no bundled
   vendor CLIs or credentials.
@@ -54,7 +56,8 @@ a profile assigns a new identity.
 
 ## Publication gates still open
 
-- Select and align the beta version/tag across all source metadata and lockfiles.
+- Source version is aligned to `0.1.0-beta.1`; verify the candidate manifest
+  and create `v0.1.0-beta.1` only after acceptance and publication authorization.
 - Build the final candidate from that versioned source and record its checksum.
 - Complete the approved fresh-user Mac installation and first-connection check on
   that exact candidate, including actual Gatekeeper behavior and startup focus.
