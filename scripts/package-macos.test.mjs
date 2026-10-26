@@ -11,12 +11,14 @@ const lock = { version, packages: { '': { version } } };
 const config = { version, bundle: { resources: [], externalBin: [] } };
 const cargo = `[package]\nversion = "${version}"`;
 
+const cargoLock = `version = 4\n[[package]]\nname = "unrelated"\nversion = "1.0.0"\n[[package]]\nname = "acp-desktop"\nversion = "${version}"\n`;
+
 test('release versions, tags and sidecars must be consistent', () => {
-  assert.equal(validateVersions(pkg, lock, config, cargo, `v${version}`), version);
-  assert.throws(() => validateVersions(pkg, lock, config, cargo, 'v0.2.0'));
-  assert.throws(() => validateVersions(pkg, lock, { ...config, version: '0.2.0' }, cargo));
-  assert.throws(() => validateVersions(pkg, { ...lock, packages: {} }, config, cargo));
-  assert.throws(() => validateVersions(pkg, lock, { ...config, bundle: { externalBin: ['vendor'] } }, cargo));
+  assert.equal(validateVersions(pkg, lock, config, cargo, cargoLock, `v${version}`), version);
+  assert.throws(() => validateVersions(pkg, lock, config, cargo, cargoLock, 'v0.2.0'));
+  assert.throws(() => validateVersions(pkg, lock, { ...config, version: '0.2.0' }, cargo, cargoLock));
+  assert.throws(() => validateVersions(pkg, { ...lock, packages: {} }, config, cargo, cargoLock));
+  assert.throws(() => validateVersions(pkg, lock, { ...config, bundle: { externalBin: ['vendor'] } }, cargo, cargoLock));
 });
 
 test('bundle audit rejects unexpected credentials, binaries, symlinks and missing signature files', async () => {
@@ -42,5 +44,15 @@ test('binary must not rely on developer-local dynamic libraries', () => {
   validateLibraries('binary:\n /System/Library/Frameworks/WebKit.framework/Versions/A/WebKit (compatibility version 1)\n /usr/lib/libSystem.B.dylib (compatibility version 1)');
   for (const library of ['/opt/homebrew/lib/private.dylib', '@rpath/vendor.dylib']) {
     assert.throws(() => validateLibraries(`binary:\n ${library} (compatibility version 1)`));
+  }
+});
+
+test('release audit rejects stale, missing or ambiguous Rust lockfile versions', () => {
+  for (const invalid of [
+    cargoLock.replace(`version = "${version}"`, 'version = "0.1.0"'),
+    cargoLock.replace('name = "acp-desktop"', 'name = "other-app"'),
+    cargoLock + `\n[[package]]\nname = "acp-desktop"\nversion = "${version}"\n`,
+  ]) {
+    assert.throws(() => validateVersions(pkg, lock, config, cargo, invalid), /Cargo.lock/);
   }
 });

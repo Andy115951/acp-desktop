@@ -24,9 +24,18 @@ Each successful run uploads an Actions artifact (retained for 14 days) containin
 
 PR artifacts represent the actual checkout commit (normally GitHub's test merge
 commit), not necessarily the branch head. A tag must match the versions in
-`package.json`, `package-lock.json`, `src-tauri/Cargo.toml` and `tauri.conf.json`.
+`package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, the `acp-desktop`
+entry in `Cargo.lock`, and `tauri.conf.json`.
 Build/download access to Actions artifacts follows GitHub repository permissions.
 These temporary artifacts are not a permanent public beta download channel.
+
+The first beta candidate version is `0.1.0-beta.1`; its intended release tag is
+`v0.1.0-beta.1`. Version alignment does not create a tag or authorize publication.
+After merging the version change, manually dispatch this workflow on `main`.
+Confirm the run and manifest identify the intended merged commit, then record
+that commit and archive hash before installation acceptance. If `main` advanced
+before dispatch, do not label that different checkout as the intended candidate. Keep that artifact for any later approved release; do not silently
+replace it with a rebuild that has a different checksum.
 
 ## Trust status
 
