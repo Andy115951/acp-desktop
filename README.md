@@ -265,3 +265,7 @@ notarization and auto-update are not claimed by the ad-hoc candidate pipeline.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+### Appearance
+
+Use **Theme** in the sidebar footer to choose **System**, **Light**, or **Dark**. System follows macOS appearance changes while the app is running. The choice is stored locally in the webview and restored on restart; changing it does not reconnect your agent or clear your draft.
