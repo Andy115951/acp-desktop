@@ -168,6 +168,7 @@ export type MessageKey =
   | "chat.transcript"
   | "chat.latest"
   | "chat.message"
+  | "chat.draftWhileWorking"
   | "chat.composerHelp"
   | "header.description"
   | "chat.copy"
@@ -290,6 +291,7 @@ const en: Dictionary = {
   "chat.transcript": "Conversation",
   "chat.latest": "Jump to latest",
   "chat.message": "Message",
+  "chat.draftWhileWorking": "Keep writing your next message. Send it when the current reply or action finishes.",
   "chat.composerHelp": "Enter to send · Shift+Enter for a new line",
   "error.details": "Technical details",
   "error.general": "The request could not be completed. Open technical details for diagnostics, then retry.",
@@ -497,6 +499,7 @@ const zhCN: Dictionary = {
   "chat.transcript": "对话",
   "chat.latest": "跳到最新消息",
   "chat.message": "消息",
+  "chat.draftWhileWorking": "可以继续准备下一条消息，当前回复或操作结束后再发送。",
   "chat.composerHelp": "Enter 发送 · Shift+Enter 换行",
   "error.details": "技术详情",
   "error.general": "请求未能完成。可展开技术详情查看诊断信息，然后重试。",
