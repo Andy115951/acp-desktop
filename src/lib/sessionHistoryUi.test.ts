@@ -22,7 +22,7 @@ describe("saved session picker", () => {
     }));
     expect(html).toContain('disabled=""');
     expect(html).toContain("此工作区暂无保存的会话");
-    expect(html).toContain("请先断开连接");
+    expect(html).toContain("请等待当前操作结束");
     expect(html).toContain('role="alert"');
     expect(html).toContain("无法读取或保存会话元数据");
   });

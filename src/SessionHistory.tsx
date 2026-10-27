@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { SESSION_TITLE_LIMIT, sessionsForWorkspace, type SessionCatalog } from "./lib/sessionCatalog";
 import { t, type Locale } from "./lib/i18n";
 
-export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed, locale, onSelect, onRename, onArchive, onRestore, listSupported, listIncomplete, variant = "select" }: {
+export function SessionHistory({ catalog, cwd, savedSessionId, disabled, editingDisabled = disabled, failed, locale, onSelect, onRename, onArchive, onRestore, listSupported, listIncomplete, variant = "select" }: {
   variant?: "select" | "list";
   catalog: SessionCatalog;
   cwd: string | null;
   savedSessionId: string | null;
   disabled: boolean;
+  editingDisabled?: boolean;
   failed: boolean;
   locale: Locale;
   onSelect: (sessionId: string) => void;
@@ -57,12 +58,12 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
       </>}
       {onRename && onArchive ? (
         <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={disabled || !selected || editing}
+          <button type="button" disabled={editingDisabled || !selected || editing}
             onClick={() => { setTitle(selected?.title ?? ""); setEditing(true); }}
             className="rounded-md border border-ui-border px-2 py-1 text-xs text-ui-secondary disabled:opacity-40">
             {t(locale, "history.rename")}
           </button>
-          <button type="button" disabled={disabled || !selected || editing} onClick={() => void onArchive()}
+          <button type="button" disabled={editingDisabled || !selected || editing} onClick={() => void onArchive()}
             title={t(locale, "history.archiveHelp")}
             className="rounded-md border border-ui-border px-2 py-1 text-xs text-ui-secondary disabled:opacity-40">
             {t(locale, "history.archive")}
@@ -72,17 +73,17 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
       {editing ? (
         <form className="flex flex-wrap items-center gap-2" onSubmit={(event) => {
           event.preventDefault();
-          if (!disabled && title.trim()) void onRename?.(title).then((saved) => { if (saved) setEditing(false); });
+          if (!editingDisabled && title.trim()) void onRename?.(title).then((saved) => { if (saved) setEditing(false); });
         }}>
           <label className="text-xs text-ui-muted">
             {t(locale, "history.title")}
-            <input autoFocus required maxLength={SESSION_TITLE_LIMIT} value={title} disabled={disabled}
+            <input autoFocus required maxLength={SESSION_TITLE_LIMIT} value={title} disabled={editingDisabled}
               onChange={(event) => setTitle(event.target.value)}
               className="mt-1 w-full min-w-0 rounded-md border border-ui-border bg-ui-code px-2 py-1 text-sm text-white" />
           </label>
-          <button type="submit" disabled={disabled || !title.trim()}
+          <button type="submit" disabled={editingDisabled || !title.trim()}
             className="rounded-md bg-sky-700 px-2 py-1 text-xs text-white disabled:opacity-40">{t(locale, "history.save")}</button>
-          <button type="button" disabled={disabled} onClick={() => setEditing(false)}
+          <button type="button" disabled={editingDisabled} onClick={() => setEditing(false)}
             className="text-xs text-ui-muted">{t(locale, "history.cancel")}</button>
         </form>
       ) : null}
@@ -100,7 +101,7 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, failed,
             {archived.map((entry) => (
               <li key={entry.sessionId} className="flex items-center justify-between gap-2">
                 <span className="min-w-0 break-all">{entry.title ?? entry.sessionId}{entry.unavailable ? ` · ${t(locale, "history.unavailable")}` : ""}</span>
-                <button type="button" disabled={disabled || editing} onClick={() => void onRestore(entry.sessionId)}
+                <button type="button" disabled={editingDisabled || editing} onClick={() => void onRestore(entry.sessionId)}
                   aria-label={t(locale, "history.restoreNamed", { name: entry.title ?? entry.sessionId })}
                   className="shrink-0 rounded-md border border-ui-border px-2 py-1 disabled:opacity-40">{t(locale, "history.restore")}</button>
               </li>

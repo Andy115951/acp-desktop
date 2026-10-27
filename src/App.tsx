@@ -50,7 +50,11 @@ export default function App() {
     sessionListSupported,
     sessionListIncomplete,
     switching,
-    selectSavedSession,
+    newConversation,
+    openConversation,
+    connecting,
+    submitting,
+    recoveryRequired,
     recentWorkspaces,
     workspaceError,
     selectWorkspace,
@@ -80,11 +84,14 @@ export default function App() {
   const { locale, hydrateLocale, setLocale, theme, setTheme } = useUiStore();
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches);
+  const [composerFocus, setComposerFocus] = useState(0);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
   const agentSettingsRef = useRef<HTMLDetailsElement>(null);
   const previousSidebarOpen = useRef(sidebarOpen);
+  const focusComposerOnClose = useRef(false);
   useEffect(() => {
-    if (previousSidebarOpen.current && !sidebarOpen) sidebarToggleRef.current?.focus();
+    if (previousSidebarOpen.current && !sidebarOpen && !focusComposerOnClose.current) sidebarToggleRef.current?.focus();
+    focusComposerOnClose.current = false;
     previousSidebarOpen.current = sidebarOpen;
   }, [sidebarOpen]);
   const closeSidebar = () => setSidebarOpen(false);
@@ -176,23 +183,33 @@ export default function App() {
   const uiGates = {
     cwd,
     connected,
-    busy: busy || switching || configuring || customEditing,
+    busy: busy || connecting || submitting || switching || configuring || customEditing,
     permissionOpen: !!permission,
     draftTrimmed: !!draft.trim(),
     savedSessionId,
     loadSessionSupported,
     canConnectAgent,
+    recoveryRequired,
   };
   const canResume = canResumeSession(uiGates);
   const canConnectNew = canConnectNewSession(uiGates);
   const canSend = canSendPrompt(uiGates);
-  const canCancel = !configuring && canCancelPrompt(uiGates);
+  const canCancel = !connecting && !configuring && canCancelPrompt(uiGates);
   const authHint = agentAuthHint(selectedAgentId, usingFake, locale);
 
   const selectedEntry = catalog.sessions.find((entry) => entry.cwd === cwd && entry.sessionId === (sessionId ?? savedSessionId));
   const workspaceName = cwd?.split(/[\\/]/).filter(Boolean).slice(-1)[0];
-  const contextLocked = connected || busy || !!permission || switching || customEditing;
-  const connecting = busy && !connected;
+  const contextLocked = busy || connecting || submitting || configuring || !!permission || switching || customEditing;
+  const canNavigate = !contextLocked;
+  const focusConversation = () => {
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      focusComposerOnClose.current = true;
+      setSidebarOpen(false);
+    }
+    setComposerFocus(value => value + 1);
+  };
+  const startConversation = () => { if (!canNavigate) return; void newConversation(); focusConversation(); };
+  const openSavedConversation = (id: string) => { if (!canNavigate) return; void openConversation(id); focusConversation(); };
   const preparationHint = !cwd ? "connection.chooseWorkspace"
     : loading ? "connection.checking"
     : !canConnectAgent ? "connection.missingAgent"
@@ -210,8 +227,8 @@ export default function App() {
           </button>
         </div>
         <div className="sidebar-scroll">
-          <button type="button" className="new-chat-button" onClick={() => void connect("new")} disabled={!canConnectNew}>
-            <ChatIcon name="plus" /> {t(locale, "connection.connectNew")}
+          <button type="button" className="new-chat-button" onClick={startConversation} disabled={!canNavigate}>
+            <ChatIcon name="plus" /> {t(locale, "navigation.newConversation")}
           </button>
           <section className="sidebar-section" aria-label={t(locale, "session.cwd")}>
             <div className="sidebar-section-heading">
@@ -223,14 +240,14 @@ export default function App() {
           </section>
           <section className="sidebar-section history-section" aria-label={t(locale, "history.label")}>
             <SessionHistory catalog={catalog} cwd={cwd} savedSessionId={savedSessionId}
-              disabled={contextLocked} failed={catalogError} variant="list"
-              locale={locale} onSelect={selectSavedSession} onRename={renameSavedSession}
+              disabled={contextLocked} editingDisabled={connected || contextLocked} failed={catalogError} variant="list"
+              locale={locale} onSelect={openSavedConversation} onRename={renameSavedSession}
               onArchive={archiveSavedSession} onRestore={restoreSavedSession}
               listSupported={sessionListSupported} listIncomplete={sessionListIncomplete} />
           </section>
           <details ref={agentSettingsRef} className="sidebar-details">
             <summary>{t(locale, "layout.agentSettings")}</summary>
-            <button type="button" onClick={() => void refresh()} disabled={loading || switching || customEditing} className="subtle-button my-3">
+            <button type="button" onClick={() => void refresh()} disabled={loading || contextLocked} className="subtle-button my-3">
               {loading ? t(locale, "agents.checking") : t(locale, "agents.refresh")}
             </button>
         {detectError ? (
@@ -251,7 +268,7 @@ export default function App() {
               <li key={agent.id}>
                 <button
                   type="button"
-                  disabled={!clickable || busy || configuring || !!permission || switching || customEditing}
+                  disabled={!clickable || contextLocked}
                   onClick={() => selectAgent(agent.id)}
                   className={`flex w-full items-center justify-between gap-3 py-2.5 text-left ${
                     available ? "text-ui-primary" : "text-ui-faint"
@@ -306,7 +323,7 @@ export default function App() {
             );
           })}
         </ul>
-        <CustomAgents locale={locale} disabled={connected || busy || switching || !!permission} />
+        <CustomAgents locale={locale} disabled={connected || busy || connecting || submitting || configuring || switching || !!permission} />
 
           </details>
           <details className="sidebar-details">
@@ -333,7 +350,7 @@ export default function App() {
             <input
               type="checkbox"
               checked={!!override?.usingOverride}
-              disabled={connected || busy}
+              disabled={connected || contextLocked}
               onChange={(e) => {
                 void setFakeAgent(e.target.checked).catch(() => undefined);
               }}
@@ -379,13 +396,13 @@ export default function App() {
             <ChatIcon name="panel" />
           </button>
           <div className="conversation-heading">
-            <h1 title={selectedEntry?.title ?? undefined}>{selectedEntry?.title ?? t(locale, "session.newSession")}</h1>
+            <h1 title={selectedEntry?.title ?? undefined}>{selectedEntry?.title ?? t(locale, "navigation.newConversation")}</h1>
             <p title={cwd ?? undefined}>{workspaceName ?? t(locale, "layout.noWorkspace")}</p>
           </div>
           <label className="agent-switcher">
             <span className="sr-only">{t(locale, "agents.switch")}</span>
             <span className={`connection-dot ${connected ? "is-connected" : ""}`} aria-hidden="true" />
-            <select value={selectedAgentId} disabled={busy || switching || configuring || customEditing || !!permission}
+            <select value={selectedAgentId} disabled={contextLocked}
               onChange={(e) => selectAgent(e.target.value)}>
               {agents.filter((a) => a.connectable).map((a) => <option key={a.id} value={a.id}>{a.name}{a.available ? "" : t(locale, "agents.missingSuffix")}</option>)}
             </select>
@@ -400,15 +417,16 @@ export default function App() {
           </span>
           <div className="connection-actions">
             {!cwd && <button type="button" className="subtle-button" onClick={() => void pickFolder()} disabled={contextLocked}>{t(locale, "session.pickFolder")}</button>}
-            {connected ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "session.disconnect")}</button> : <>
+            {connecting ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "navigation.cancelConnection")}</button> : connected ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "session.disconnect")}</button> : <>
               {savedSessionId && <button type="button" className="subtle-button" onClick={() => void connect("resume")} disabled={!canResume}
                 aria-describedby={!busy ? "connection-help" : undefined}
                 title={loadSessionSupported === false ? t(locale, "session.resumeTitleUnsupported") : t(locale, "connection.resumeHelp")}>{t(locale, "connection.connectResume")}</button>}
-              <button type="button" className="connect-button" onClick={() => void connect("new")} disabled={!canConnectNew}
-                aria-describedby={!busy ? "connection-help" : undefined}
-                title={t(locale, connecting ? "connection.connecting" : canConnectNew ? "connection.newHelp" : preparationHint, { name: selected?.name ?? t(locale, "chat.agent") })}>
-                {t(locale, connecting ? "connection.connecting" : savedSessionId ? "connection.connectNew" : "session.connect")}
-              </button>
+              {savedSessionId ? <button type="button" className="subtle-button" onClick={startConversation} disabled={!canNavigate}
+                title={t(locale, "navigation.newHelp")}>{t(locale, "navigation.newConversation")}</button>
+                : <button type="button" className="connect-button" onClick={() => void connect("new")} disabled={!canConnectNew || recoveryRequired}
+                  aria-describedby={!busy ? "connection-help" : undefined}
+                  title={t(locale, canConnectNew ? "connection.newHelp" : preparationHint, { name: selected?.name ?? t(locale, "chat.agent") })}>{t(locale, "session.connect")}</button>}
+
             </>}
           </div>
         </div>
@@ -432,7 +450,7 @@ export default function App() {
               : <ol className="connection-checklist" aria-label={t(locale, "connection.steps")}>
                 <li data-ready={!!cwd}><span className="step-number" aria-hidden="true">1</span><div><span>{t(locale, "layout.workspace")}</span><strong title={cwd ?? undefined}>{workspaceName ?? t(locale, "session.pickFolder")}</strong></div></li>
                 <li data-ready={canConnectAgent}><span className="step-number" aria-hidden="true">2</span><div><span>{t(locale, "chat.agent")}</span><strong>{selected?.name ?? t(locale, "connection.chooseAgent")}{selected && !canConnectAgent && !loading ? ` · ${t(locale, "agents.missing")}` : ""}</strong></div></li>
-                <li><span className="step-number" aria-hidden="true">3</span><div><span>{t(locale, "session.connect")}</span><strong>{t(locale, "connection.startConversation")}</strong></div></li>
+                <li><span className="step-number" aria-hidden="true">3</span><div><span>{t(locale, "session.send")}</span><strong>{t(locale, "connection.startConversation")}</strong></div></li>
               </ol>}
           </div>}>
           {permission && <div ref={permissionCardRef}><PermissionCard permission={permission} allowButtonRef={allowButtonRef} onRespond={(id) => void respondPermission(id)} locale={locale} /></div>}
@@ -442,13 +460,13 @@ export default function App() {
           {connected && <details className="session-options">
             <summary>{t(locale, "layout.sessionOptions")}{configError && <span className="ml-2 text-ui-warning">{t(locale, "layout.configFailed")}</span>}</summary>
             <div className="session-options-content"><AgentSessionInfo metadata={metadata?.sessionId === sessionId ? metadata : null} locale={locale}
-              disabled={busy || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /></div>
+              disabled={busy || connecting || submitting || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /></div>
           </details>}
           <MessageComposer draft={draft} locale={locale}
-            disabled={!connected || switching || !!permission} working={busy || configuring}
+            disabled={switching || !!permission} working={busy || configuring} connecting={connecting} focusToken={composerFocus}
             permissionOpen={!!permission} canSend={canSend} canCancel={canCancel} connected={connected}
             agentName={selected?.name ?? "Agent"}
-            placeholder={connected ? usingFake ? t(locale, "session.placeholderConnectedFake") : t(locale, "session.placeholderConnected", { name: selected?.name ?? "agent" }) : t(locale, "session.placeholderIdle")}
+            placeholder={connected ? usingFake ? t(locale, "session.placeholderConnectedFake") : t(locale, "session.placeholderConnected", { name: selected?.name ?? "agent" }) : t(locale, "navigation.placeholderDraft")}
             onDraftChange={setDraft} onSend={send} onCancel={cancel} />
         </footer>
       </section>

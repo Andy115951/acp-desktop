@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Zustand's server snapshot is deliberately the store's initial state. These
 // static-markup checks need the explicit scenario snapshot instead; real hook
 // subscriptions and click behavior are exercised by the browser acceptance.
+vi.mock("../CustomAgents", () => ({
+  CustomAgents: ({ disabled }: { disabled: boolean }) => createElement("div", { "data-custom-editor-disabled": String(disabled) }),
+}));
 vi.mock("../store/session", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../store/session")>();
   return { ...actual, useSessionStore: Object.assign(() => actual.useSessionStore.getState(), actual.useSessionStore) };
@@ -30,6 +33,7 @@ beforeEach(() => {
     selectedAgentId: "codex", loading: false, customEditing: false, error: null, override: null,
   });
   useSessionStore.setState({
+    drafts: {}, draftTarget: null, connecting: false, submitting: false, recoveryRequired: false,
     cwd: "/workspace", catalog: { version: 1, sessions: [] }, catalogError: false,
     connected: false, busy: false, switching: false, configuring: false, permission: null,
     error: null, sessionId: null, savedSessionId: null, loadSessionSupported: null,
@@ -40,12 +44,20 @@ beforeEach(() => {
 });
 
 describe("connection discovery and preparation", () => {
+  it("keeps the custom profile editor usable while its own form locks navigation", () => {
+    useAgentsStore.setState({customEditing:true});
+    const html=render();
+    expect(html).toContain('data-custom-editor-disabled="false"');
+    expect(html).toMatch(/class="new-chat-button"[^>]*disabled/);
+    useSessionStore.setState({connecting:true});
+    expect(render()).toContain('data-custom-editor-disabled="true"');
+  });
   it("keeps Connect explicit both before first use and with saved history", () => {
     expect(primaryButton(render())).toMatch(/>Connect<\/button>/);
     useSessionStore.setState({ savedSessionId: "saved-session" });
     const html = render();
-    expect(primaryButton(html)).toContain("Connect &amp; start new");
-    expect(primaryButton(html)).not.toContain('disabled=""');
+    expect(html).toContain("New conversation");
+    expect(html).not.toMatch(/class="new-chat-button"[^>]*disabled/);
     expect(html).toContain("Connect &amp; resume");
     expect(html).toContain("continues the selected saved conversation");
     expect(html).toContain("first connection may download an adapter");
@@ -54,7 +66,7 @@ describe("connection discovery and preparation", () => {
     useUiStore.setState({ locale: "zh-CN" });
     useSessionStore.setState({ savedSessionId: "saved-session" });
     const html = render();
-    expect(primaryButton(html)).toContain("连接并新建");
+    expect(html).toContain("新建对话");
     expect(html).toContain("连接并恢复");
     expect(html).toContain("原有会话仍保留在历史中");
     expect(html).toContain("未连接");
@@ -84,12 +96,13 @@ describe("connection discovery and preparation", () => {
     expect(primaryButton(html)).toContain('disabled=""');
   });
   it("distinguishes connecting from a live prompt and prevents repeated New/Resume", () => {
-    useSessionStore.setState({ busy: true, savedSessionId: "saved-session" });
+    useSessionStore.setState({ busy: true, connecting: true, savedSessionId: "saved-session" });
     const html = render();
-    expect(primaryButton(html)).toContain("Connecting…");
-    expect(primaryButton(html)).toContain('disabled=""');
+    expect(html).toContain("Connecting…");
+    expect(html).toContain("Cancel connection");
+    expect(html).toMatch(/class="new-chat-button"[^>]*disabled/);
     expect(html).not.toContain('id="connection-help"');
-    useSessionStore.setState({ connected: true });
+    useSessionStore.setState({ connected: true, connecting: false });
     const connectedHtml = render();
     expect(primaryButton(connectedHtml)).toBeUndefined();
     expect(connectedHtml).toContain("Disconnect");
@@ -100,7 +113,7 @@ describe("connection discovery and preparation", () => {
     useSessionStore.setState({ savedSessionId: "saved-session", loadSessionSupported: false });
     const html = render();
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="Agent does not advertise loadSession"[^>]*>Connect &amp; resume<\/button>/);
-    expect(primaryButton(html)).not.toContain('disabled=""');
+    expect(html).not.toMatch(/class="new-chat-button"[^>]*disabled/);
   });
   it("does not turn a missing vendor CLI into an error in deliberate fake-agent mode", () => {
     useAgentsStore.setState({

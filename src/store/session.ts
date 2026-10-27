@@ -1,3 +1,4 @@
+import { bindDraft, lastConversation, readDraft, rememberDraft, type ConversationDrafts, type DraftTarget } from "../lib/conversationDrafts";
 import { mergeSessionMetadata, type SessionMetadata } from "../lib/sessionMetadata";
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
@@ -71,7 +72,16 @@ async function loadLastCwd(): Promise<string | null> {
   }
 }
 
+type ConnectedSession = { agentId: string; cwd: string; sessionId: string; connectionToken: string };
+
 type SessionState = {
+  drafts: ConversationDrafts;
+  draftTarget: DraftTarget | null;
+  connecting: boolean;
+  submitting: boolean;
+  recoveryRequired: boolean;
+  newConversation: () => Promise<void>;
+  openConversation: (sessionId: string) => Promise<void>;
   cwd: string | null;
   catalog: SessionCatalog;
   catalogError: boolean;
@@ -103,7 +113,7 @@ type SessionState = {
   pickFolder: () => Promise<void>;
   hydrateFromPrefs: () => Promise<void>;
   reloadForAgent: (agentId: string) => Promise<void>;
-  connect: (mode?: "new" | "resume") => Promise<void>;
+  connect: (mode?: "new" | "resume") => Promise<ConnectedSession | null>;
   disconnect: () => Promise<void>;
   send: () => Promise<void>;
   cancel: () => Promise<void>;
@@ -117,13 +127,25 @@ let draftRevision = 0;
 let connectionGeneration = 0;
 let contextGeneration = 0;
 let connectionAgentId: string | null = null;
+let activeConnectionToken: string | null = null;
+const acceptsEvent = (event: { connectionToken?: string }) => !event.connectionToken || event.connectionToken === activeConnectionToken;
 let catalogRevision = 0;
+
+function targetFor(state: SessionState): DraftTarget {
+  return state.draftTarget ?? { agentId: currentAgentId(), cwd: state.cwd, sessionId: state.sessionId ?? state.savedSessionId };
+}
+function parkedDrafts(state: SessionState): ConversationDrafts {
+  return rememberDraft(state.drafts, targetFor(state), state.draft);
+}
+function navigationBlocked(state: SessionState): boolean {
+  return state.busy || state.connecting || state.submitting || state.configuring || !!state.permission || state.switching || useAgentsStore.getState().customEditing;
+}
 
 type CatalogEdit = { type: "rename"; title: string } | { type: "archive" } | { type: "restore"; sessionId: string };
 
 async function editSavedEntry(action: CatalogEdit): Promise<boolean> {
   const state = useSessionStore.getState();
-  if (state.connected || state.busy || state.permission || state.switching || !state.cwd) return false;
+  if (state.connected || navigationBlocked(state) || !state.cwd) return false;
   const sessionId = action.type === "restore" ? action.sessionId : state.savedSessionId;
   const entry = state.catalog.sessions.find((item) => item.cwd === state.cwd && item.sessionId === sessionId);
   if (!entry || (action.type === "restore" ? entry.archivedAt == null : entry.archivedAt != null || entry.unavailable)) return false;
@@ -139,8 +161,10 @@ async function editSavedEntry(action: CatalogEdit): Promise<boolean> {
     if (generation !== contextGeneration || currentAgentId() !== agentId || useSessionStore.getState().cwd !== state.cwd) return false;
     const savedSessionId = action.type === "archive" ? sessionsForWorkspace(catalog, state.cwd)[0]?.sessionId ?? null
       : action.type === "restore" && !entry.unavailable ? entry.sessionId : state.savedSessionId;
-    useSessionStore.setState({ catalog, catalogError: false, savedSessionId,
-      ...(savedSessionId !== state.savedSessionId ? { lines: [], draft: "", error: null, sessionId: null } : {}) });
+    const drafts = parkedDrafts(state);
+    const target = { agentId, cwd: state.cwd, sessionId: savedSessionId };
+    useSessionStore.setState({ catalog, catalogError: false, savedSessionId, drafts,
+      ...(savedSessionId !== state.savedSessionId ? { draftTarget: target, lines: [], draft: readDraft(drafts, target), error: null, sessionId: null } : {}) });
     return true;
   } catch {
     if (generation === contextGeneration) useSessionStore.setState({ catalogError: true });
@@ -156,6 +180,64 @@ async function loadRecentWorkspaces() {
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
+  drafts: {}, draftTarget: null, connecting: false, submitting: false, recoveryRequired: false,
+  newConversation: async () => {
+    const state = get();
+    if (navigationBlocked(state)) return;
+    const agentId = currentAgentId();
+    const cwd = state.cwd;
+    const drafts = parkedDrafts(state);
+    const target = { agentId, cwd, sessionId: null };
+    const newDraft = readDraft(drafts, target);
+    if (state.recoveryRequired && state.draft && newDraft && newDraft !== state.draft) {
+      set({ error: "A separate New conversation draft exists. Copy or clear this failed Resume draft before opening New conversation." });
+      return;
+    }
+    const generation = ++contextGeneration;
+    set({ switching: true });
+    try {
+      if (state.connected) await get().disconnect();
+      if (generation !== contextGeneration || currentAgentId() !== agentId || get().cwd !== cwd) return;
+      ++draftRevision; ++connectionGeneration; activeConnectionToken = null;
+      set({ drafts, draftTarget: target, draft: readDraft(drafts, target) || (state.recoveryRequired ? state.draft : ""),
+        savedSessionId: null, sessionId: null, connected: false, busy: false, recoveryRequired: false,
+        metadata: null, configError: false, configuring: false, loadSessionSupported: null,
+        error: null, lines: [], permission: null });
+    } catch (error) {
+      if (generation === contextGeneration) set({ error: String(error) });
+    } finally {
+      if (generation === contextGeneration) set({ switching: false });
+    }
+  },
+  openConversation: async (sessionId) => {
+    const state = get();
+    if (navigationBlocked(state) || !state.cwd) return;
+    if (!sessionsForWorkspace(state.catalog, state.cwd).some(entry => entry.sessionId === sessionId)) return;
+    if (state.connected && state.sessionId === sessionId) return;
+    if (state.loadSessionSupported === false) {
+      set({ error: "Agent does not advertise loadSession; Resume is unavailable. Choose New conversation." });
+      return;
+    }
+    const generation = ++contextGeneration;
+    const agentId = currentAgentId();
+    const cwd = state.cwd;
+    const drafts = parkedDrafts(state);
+    const target = { agentId, cwd, sessionId };
+    set({ switching: true });
+    try {
+      if (state.connected) await get().disconnect();
+      if (generation !== contextGeneration || currentAgentId() !== agentId || get().cwd !== cwd) return;
+      ++draftRevision; ++connectionGeneration; activeConnectionToken = null;
+      set({ drafts, draftTarget: target, draft: readDraft(drafts, target), savedSessionId: sessionId,
+        sessionId: null, lines: [], error: null, permission: null, recoveryRequired: false });
+    } catch (error) {
+      if (generation === contextGeneration) set({ error: String(error) });
+      return;
+    } finally {
+      if (generation === contextGeneration) set({ switching: false });
+    }
+    if (generation === contextGeneration && currentAgentId() === agentId && get().cwd === cwd) await get().connect("resume");
+  },
   cwd: null,
   catalog: emptyCatalog(),
   catalogError: false,
@@ -167,11 +249,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   archiveSavedSession: () => editSavedEntry({ type: "archive" }),
   restoreSavedSession: (sessionId) => editSavedEntry({ type: "restore", sessionId }),
   selectWorkspace: async (cwd) => {
-    if (get().connected || get().busy || get().permission || get().switching || !isPlausibleCwd(cwd)) return;
+    if (navigationBlocked(get()) || !isPlausibleCwd(cwd)) return;
     const generation = ++contextGeneration;
     const agentId = currentAgentId();
+    const previous = get();
+    const drafts = parkedDrafts(previous);
     set({ switching: true });
     try {
+      if (previous.connected) await get().disconnect();
+      if (generation !== contextGeneration || currentAgentId() !== agentId) return;
       const context = await loadCatalogContext(agentId, cwd);
       if (generation !== contextGeneration || currentAgentId() !== agentId) return;
       let recentWorkspaces: RecentWorkspace[];
@@ -182,8 +268,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         workspaceError = true;
       }
       if (generation !== contextGeneration || currentAgentId() !== agentId) return;
-      set({ ...context, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null, sessionListSupported: null, sessionListIncomplete: false, metadata: null, configuring: false, configError: false,
-        loadSessionSupported: null, lines: [], permission: null, draft: "" });
+      context.savedSessionId = lastConversation(drafts, agentId, cwd, context.savedSessionId, sessionsForWorkspace(context.catalog, cwd).map(entry => entry.sessionId));
+      const target = { agentId, cwd, sessionId: context.savedSessionId };
+      // A draft written before the first folder choice starts a new conversation.
+      if (!previous.cwd && previous.draft) { context.savedSessionId = null; target.sessionId = null; }
+      ++draftRevision; ++connectionGeneration; activeConnectionToken = null;
+      set({ ...context, drafts, draftTarget: target, recentWorkspaces, workspaceError, cwd, error: null, sessionId: null, recoveryRequired: false, sessionListSupported: null, sessionListIncomplete: false, metadata: null, configuring: false, configError: false,
+        loadSessionSupported: null, lines: [], permission: null, draft: !previous.cwd && previous.draft ? previous.draft : readDraft(drafts, target) });
+    } catch (error) {
+      if (generation === contextGeneration) set({ error: String(error) });
     } finally {
       if (generation === contextGeneration) set({ switching: false });
     }
@@ -191,9 +284,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   switching: false,
   selectSavedSession: (sessionId) => {
     const state = get();
-    if (state.connected || state.busy || state.permission || state.switching || !state.cwd) return;
+    if (state.connected || navigationBlocked(state) || !state.cwd) return;
     if (!sessionsForWorkspace(state.catalog, state.cwd).some((entry) => entry.sessionId === sessionId)) return;
-    set({ savedSessionId: sessionId, sessionId: null, lines: [], error: null, permission: null, draft: "" });
+    const drafts = parkedDrafts(state);
+    const target = { agentId: currentAgentId(), cwd: state.cwd, sessionId };
+    ++draftRevision; ++connectionGeneration; activeConnectionToken = null;
+    set({ drafts, draftTarget: target, savedSessionId: sessionId, sessionId: null, lines: [], error: null, permission: null,
+      recoveryRequired: false, draft: readDraft(drafts, target) });
   },
   connected: false,
   busy: false,
@@ -204,11 +301,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   lines: [],
   permission: null,
   draft: "",
-  setDraft: (v) => { ++draftRevision; set({ draft: v }); },
+  setDraft: (v) => { ++draftRevision; set({ draft: v, draftTarget: targetFor(get()) }); },
   setConfig: async (id, value) => {
     const state = get();
     const option = state.metadata?.configOptions?.find(option => option.id === id);
-    if (!state.connected || state.busy || state.configuring || state.switching || state.permission || !state.sessionId
+    if (!state.connected || state.busy || state.connecting || state.submitting || state.configuring || state.switching || state.permission || !state.sessionId
       || state.metadata?.sessionId !== state.sessionId || !option?.writable || option.currentValue === value
       || !option.choices.some(choice => choice.value === value)) return;
     const generation = connectionGeneration;
@@ -224,13 +321,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   insertCommand: (name) => {
     const state = get();
-    if (!state.connected || state.busy || state.configuring || state.permission || state.switching || state.metadata?.sessionId !== state.sessionId
+    if (!state.connected || state.busy || state.connecting || state.submitting || state.configuring || state.permission || state.switching || state.metadata?.sessionId !== state.sessionId
       || !state.metadata?.commands?.some(command => command.name === name)) return;
     set({ draft: `/${name} ${state.draft}` });
   },
   clearTranscript: () => set(sessionPatchAfterClear()),
   pickFolder: async () => {
-    if (get().connected || get().busy || get().permission || get().switching) return;
+    if (navigationBlocked(get())) return;
     const generation = ++contextGeneration;
     const agentId = currentAgentId();
     set({ switching: true });
@@ -259,7 +356,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const context = await loadCatalogContext(agentId, lastCwd);
         if (generation !== contextGeneration) return;
         if (currentAgentId() !== agentId) continue;
-        set({ ...context, ...workspaces, cwd: lastCwd, error: null });
+        const unassignedDraft = get().draft;
+        if (unassignedDraft) context.savedSessionId = null;
+        const target = { agentId, cwd: lastCwd, sessionId: context.savedSessionId };
+        const drafts = parkedDrafts(get());
+        set({ ...context, ...workspaces, drafts, draftTarget: target, draft: unassignedDraft || readDraft(drafts, target), cwd: lastCwd, error: null });
         break;
       }
     } finally {
@@ -270,38 +371,45 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!get().cwd) { await get().hydrateFromPrefs(); return; }
     const generation = ++contextGeneration;
     const cwd = get().cwd;
-    set({ ...sessionPatchAfterAgentSwitch(null), catalog: emptyCatalog(), switching: true, draft: "", sessionListSupported: null, sessionListIncomplete: false, metadata: null, configuring: false, configError: false });
+    if (!cwd) return;
+    const previous = get();
+    const drafts = previous.switching ? previous.drafts : parkedDrafts(previous);
+    const previousTarget = targetFor(previous);
+    set({ ...sessionPatchAfterAgentSwitch(null), draftTarget: previousTarget, drafts, catalog: emptyCatalog(), switching: true, draft: "", recoveryRequired: false, sessionListSupported: null, sessionListIncomplete: false, metadata: null, configuring: false, configError: false });
     const context = await loadCatalogContext(agentId, cwd);
     if (generation !== contextGeneration || currentAgentId() !== agentId || get().cwd !== cwd) return;
-    set({ ...context, switching: false });
+    context.savedSessionId = lastConversation(drafts, agentId, cwd, context.savedSessionId, sessionsForWorkspace(context.catalog, cwd).map(entry => entry.sessionId));
+    const target = { agentId, cwd, sessionId: context.savedSessionId };
+    ++draftRevision; ++connectionGeneration; activeConnectionToken = null;
+    set({ ...context, draftTarget: target, draft: readDraft(drafts, target), switching: false });
   },
   connect: async (mode = "new") => {
     const cwd = get().cwd;
     if (!cwd) {
       set({ error: "Pick a workspace folder first." });
-      return;
+      return null;
     }
     // Host now awaits handshake, but still guard double-clicks while busy /
     // already connected so we never stack a second connect_agent.
-    if (get().busy || get().connected || get().switching || get().permission || useAgentsStore.getState().customEditing) {
-      return;
+    if (get().busy || get().connected || get().connecting || get().submitting || get().switching || get().permission || useAgentsStore.getState().customEditing) {
+      return null;
     }
     const resumeSessionId =
       mode === "resume" ? get().savedSessionId ?? undefined : undefined;
     if (mode === "resume" && !resumeSessionId) {
       set({ error: "No saved session for this folder." });
-      return;
+      return null;
     }
     if (mode === "resume" && get().loadSessionSupported === false) {
       set({
         error:
-          "Agent does not advertise loadSession; Resume is unavailable. Use New session.",
+          "Agent does not advertise loadSession; Resume is unavailable. Choose New conversation.",
       });
-      return;
+      return null;
     }
     set({
       error: null,
-      busy: true,
+      busy: true, connecting: true,
       sessionId: null,
       sessionListSupported: null,
       sessionListIncomplete: false, metadata: null, configuring: false, configError: false,
@@ -328,17 +436,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const generation = ++connectionGeneration;
     const agentId = currentAgentId();
     connectionAgentId = agentId;
+    const connectionToken = crypto.randomUUID();
+    activeConnectionToken = connectionToken;
     try {
-      await invoke("connect_agent", {
+      const ready = await invoke<ConnectedSession>("connect_agent", {
         agentId,
         cwd,
         resumeSessionId: resumeSessionId ?? null,
+        connectionToken,
       });
-      if (generation !== connectionGeneration) return;
-      // connected / sessionId / replay lines come from acp://status + acp://stream
+      if (generation !== connectionGeneration) return null;
+      if (currentAgentId() !== agentId || get().cwd !== cwd) return null;
+      if (!ready || ready.agentId !== agentId || ready.cwd !== cwd || ready.connectionToken !== connectionToken || !ready.sessionId
+        || (resumeSessionId && ready.sessionId !== resumeSessionId)) {
+        // Stop the unexpected live process before allowing another connection.
+        activeConnectionToken = null;
+        await invoke("disconnect_agent").catch(() => {});
+        throw new Error("Agent returned an unexpected connected session.");
+      }
+      const target = { agentId, cwd, sessionId: ready.sessionId };
+      set({ drafts: bindDraft(get().drafts, targetFor(get()), target, get().draft), draftTarget: target,
+        connected: true, sessionId: ready.sessionId, savedSessionId: ready.sessionId, recoveryRequired: false });
       set({ busy: false });
+      return ready;
     } catch (e) {
-      if (generation !== connectionGeneration) return;
+      if (generation !== connectionGeneration) return null;
       const raw = e instanceof Error ? e.message : String(e);
       // Invoke rejection path: status may also fire, but always drop a dead
       // Resume id here so the button cannot retry the same stale session.
@@ -353,20 +475,25 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         set({
           connected: false,
           busy: false,
-          savedSessionId: null,
+          savedSessionId: null, recoveryRequired: true,
           error: recoverableSessionLoadMessage(raw),
         });
-        return;
+        return null;
       }
       set({
         connected: false,
         busy: false,
         error: raw,
       });
+      return null;
+    } finally {
+      if (generation === connectionGeneration) set({ connecting: false });
     }
   },
   disconnect: async () => {
     const generation = ++connectionGeneration;
+    activeConnectionToken = null;
+    set({ connecting: false, submitting: false });
     try {
       await invoke("disconnect_agent");
     } finally {
@@ -385,12 +512,26 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const text = get().draft;
     if (!text.trim()) return;
     // Ask modal owns the turn; never queue a second prompt underneath it.
-    if (get().permission || !get().connected || get().busy || get().configuring) return;
+    if (navigationBlocked(get())) return;
+    if (!get().connected) {
+      if (!get().cwd || get().recoveryRequired) return;
+      const revision = draftRevision;
+      const agentId = currentAgentId();
+      const cwd = get().cwd;
+      const connection = get().connect(get().savedSessionId ? "resume" : "new");
+      const generation = connectionGeneration;
+      set({ submitting: true });
+      const ready = await connection;
+      if (generation !== connectionGeneration) return;
+      set({ submitting: false });
+      if (!ready || get().error || !get().connected || navigationBlocked(get()) || currentAgentId() !== agentId || get().cwd !== cwd
+        || get().sessionId !== ready.sessionId || draftRevision !== revision || get().draft !== text) return;
+    }
     const generation = connectionGeneration;
     const sentDraftRevision = ++draftRevision;
     set({
       draft: "",
-      busy: true,
+      busy: true, submitting: true,
       error: null,
       lines: [
         ...get().lines,
@@ -417,6 +558,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         // typed and cleared) the next draft while the request was running.
         ...(draftRevision === sentDraftRevision && !get().draft ? { draft: text } : {}),
       });
+    } finally {
+      if (generation === connectionGeneration) set({ submitting: false });
     }
   },
   cancel: async () => {
@@ -469,7 +612,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   bindEvents: async () => {
     const unsubs: UnlistenFn[] = [];
-    unsubs.push(await listen<SessionMetadata>("acp://metadata", (ev) => {
+    unsubs.push(await listen<SessionMetadata & { connectionToken?: string }>("acp://metadata", (ev) => {
+        if (!acceptsEvent(ev.payload)) return;
       const update = ev.payload;
       const state = get();
       if (update.agentId !== currentAgentId() || update.agentId !== connectionAgentId || update.cwd !== state.cwd
@@ -477,7 +621,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       set({ metadata: mergeSessionMetadata(state.metadata, update), ...(update.configOptions ? { configError: false } : {}) });
     }));
     unsubs.push(
-      await listen<{ kind: string; text: string; tool?: ToolData }>("acp://stream", (ev) => {
+      await listen<{ kind: string; text: string; tool?: ToolData; connectionToken?: string }>("acp://stream", (ev) => {
+        if (!acceptsEvent(ev.payload)) return;
         // Functional update preserves back-to-back chunks and replay order.
         set((state) => ({
           lines: appendStreamLine(state.lines, {
@@ -491,12 +636,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     );
     unsubs.push(
       await listen<{
+        connectionToken?: string;
         requestId: number;
         title: string;
         detail: string;
         options: { id: string; name: string; kind: string }[];
         tool?: ToolData;
       }>("acp://permission", (ev) => {
+        if (!acceptsEvent(ev.payload)) return;
         set((state) => ({
           lines: ev.payload.tool ? appendStreamLine(state.lines, {
             id: `tool-${++lineCounter}`, kind: "tool_call", text: ev.payload.title, tool: ev.payload.tool,
@@ -513,8 +660,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     );
     unsubs.push(
       await listen<{
-        agentId: string; cwd: string; supported: boolean; incomplete: boolean; sessions: DiscoveredSession[];
+        connectionToken?: string; agentId: string; cwd: string; supported: boolean; incomplete: boolean; sessions: DiscoveredSession[];
       }>("acp://sessions", (ev) => {
+        if (!acceptsEvent(ev.payload)) return;
         const { agentId, cwd, supported, incomplete, sessions } = ev.payload;
         if (agentId !== currentAgentId() || agentId !== connectionAgentId || cwd !== get().cwd || (!get().connected && !get().busy)) return;
         const generation = connectionGeneration;
@@ -531,6 +679,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     );
     unsubs.push(
       await listen<{
+        connectionToken?: string;
         connected: boolean;
         cwd?: string | null;
         sessionId?: string | null;
@@ -538,6 +687,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         error?: string | null;
         loadSessionSupported?: boolean | null;
       }>("acp://status", (ev) => {
+        if (!acceptsEvent(ev.payload)) return;
         const cwd = ev.payload.cwd ?? get().cwd;
         const sessionId = ev.payload.sessionId ?? null;
         const loadSessionSupported =
@@ -559,7 +709,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           const generation = connectionGeneration;
           const revision = ++catalogRevision;
           if (currentAgentId() === agentId) {
-            set({ savedSessionId: sessionId, catalog: rememberSession(get().catalog, cwd, sessionId, Date.now()) });
+            const target = { agentId, cwd, sessionId };
+            set({ savedSessionId: sessionId, drafts: bindDraft(get().drafts, targetFor(get()), target, get().draft), draftTarget: target,
+              catalog: rememberSession(get().catalog, cwd, sessionId, Date.now()) });
           }
           void saveKnownSession(agentId, cwd, sessionId).then((catalog) => {
             if (generation === connectionGeneration && revision === catalogRevision && currentAgentId() === agentId && get().cwd === cwd) {
@@ -571,7 +723,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         }
 
         // Corrupt / unknown resume id: drop the stale prefs entry so Resume
-        // does not keep failing; Connect (New session) remains available.
+        // does not keep failing; an explicit New conversation is required.
         const loadFailed =
           !!ev.payload.error && isSessionLoadFailedError(ev.payload.error);
         const statusError = loadFailed
@@ -608,7 +760,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           ...(shouldDismissAskOnDisconnect(ev.payload.connected)
             ? { permission: null }
             : {}),
-          ...(loadFailed ? { savedSessionId: null } : {}),
+          ...(loadFailed ? { savedSessionId: null, recoveryRequired: true } : {}),
         });
       }),
     );

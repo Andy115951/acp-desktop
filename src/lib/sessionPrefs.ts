@@ -41,9 +41,9 @@ export function isSessionLoadFailedError(message: string): boolean {
   return false;
 }
 
-/** Clear UI message when Resume id is gone — points user to Connect. */
+/** Clear UI message when Resume id is gone — requires an explicit New conversation. */
 export const STALE_RESUME_USER_MESSAGE =
-  "Saved session is no longer available (missing or expired). Resume was cleared — use Connect (New session).";
+  "Saved session is no longer available (missing or expired). Resume was cleared — choose New conversation explicitly.";
 
 /**
  * Prefer a recoverable Connect hint over raw FS_NOT_FOUND / ACP codes when

@@ -11,6 +11,7 @@ export type SessionUiGates = {
   /** null = unknown (still allow Resume; host will decide). */
   loadSessionSupported: boolean | null;
   canConnectAgent: boolean;
+  recoveryRequired?: boolean;
 };
 
 /** Resume button: saved id + cwd + agent, idle, loadSession not known-false. */
@@ -32,7 +33,8 @@ export function canConnectNewSession(g: SessionUiGates): boolean {
 
 /** Send / draft Enter: blocked while Ask is open or busy. */
 export function canSendPrompt(g: SessionUiGates): boolean {
-  return g.connected && !g.busy && !g.permissionOpen && g.draftTrimmed;
+  return !g.busy && !g.permissionOpen && g.draftTrimmed && !g.recoveryRequired &&
+    (g.connected || (!!g.cwd && g.canConnectAgent && (!g.savedSessionId || g.loadSessionSupported !== false)));
 }
 
 /** Toolbar Cancel: enabled while prompt busy OR Ask is open. */
