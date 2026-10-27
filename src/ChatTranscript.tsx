@@ -37,11 +37,14 @@ export function ChatTranscript({ lines, locale, resetKey, children, fill = false
   const contentRef = useRef<HTMLDivElement>(null);
   const lastScrollTopRef = useRef(0);
   const followingRef = useRef(true);
+  const emptyRef = useRef(lines.length === 0 && !children);
   const [following, setFollowing] = useState(true);
 
   const followLatest = () => {
     if (!scrollRef.current) return;
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    // A tall welcome/setup panel should open at its first instruction. Only
+    // actual conversation content follows the bottom of the scroll region.
+    scrollRef.current.scrollTop = emptyRef.current ? 0 : scrollRef.current.scrollHeight;
     lastScrollTopRef.current = scrollRef.current.scrollTop;
   };
 
@@ -60,6 +63,7 @@ export function ChatTranscript({ lines, locale, resetKey, children, fill = false
   }, [resetKey]);
 
   useLayoutEffect(() => {
+    emptyRef.current = lines.length === 0 && !children;
     if (lines.length === 0) {
       followingRef.current = true;
       setFollowing(true);
