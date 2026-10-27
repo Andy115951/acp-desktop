@@ -11,6 +11,11 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "connection.connectNew" | "connection.connectResume" | "connection.connecting"
+  | "connection.chooseWorkspace" | "connection.checking" | "connection.missingAgent"
+  | "connection.finishEditing" | "connection.readySaved" | "connection.ready"
+  | "connection.newHelp" | "connection.resumeHelp" | "connection.firstDownload"
+  | "connection.steps" | "connection.chooseAgent" | "connection.startConversation"
   | "theme.label" | "theme.system" | "theme.light" | "theme.dark"
   | "layout.workspace"
   | "layout.historyHelp"
@@ -193,6 +198,21 @@ export type MessageKey =
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "connection.connectNew": "Connect & start new",
+  "connection.connectResume": "Connect & resume",
+  "connection.connecting": "Connecting…",
+  "connection.chooseWorkspace": "Choose a workspace folder, then connect your agent.",
+  "connection.checking": "Checking installed agents…",
+  "connection.missingAgent": "{name} was not found locally. Open Agents & settings to check its setup or choose another installed agent.",
+  "connection.finishEditing": "Finish updating the workspace or agent settings before connecting.",
+  "connection.readySaved": "Connect & resume continues the selected saved conversation. Connect & start new keeps earlier conversations in history.",
+  "connection.ready": "Ready to connect to {name}. Your agent uses its existing CLI login.",
+  "connection.newHelp": "Connect to the selected agent and start a new conversation. Earlier sessions stay in history.",
+  "connection.resumeHelp": "Connect to the selected agent and restore the selected saved conversation.",
+  "connection.firstDownload": "The first connection may download an adapter and take a little longer.",
+  "connection.steps": "Connection setup",
+  "connection.chooseAgent": "Choose an installed agent",
+  "connection.startConversation": "Start new or resume a saved conversation",
   "theme.label": "Theme",
   "theme.system": "System",
   "theme.light": "Light",
@@ -355,7 +375,7 @@ const en: Dictionary = {
   "session.session": "session",
   "session.saved": "saved",
   "session.connected": "connected",
-  "session.idle": "idle",
+  "session.idle": "Not connected",
   "session.loadUnsupported": "loadSession unsupported",
   "session.loadOk": "loadSession ok",
   "session.resumeDisabledBefore":
@@ -385,6 +405,21 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "connection.connectNew": "连接并新建",
+  "connection.connectResume": "连接并恢复",
+  "connection.connecting": "正在连接…",
+  "connection.chooseWorkspace": "先选择工作区文件夹，再连接智能体。",
+  "connection.checking": "正在检测本机智能体…",
+  "connection.missingAgent": "未在本机找到 {name}。打开「智能体与设置」检查配置，或选择其他已安装的智能体。",
+  "connection.finishEditing": "请先完成工作区或智能体设置，再连接。",
+  "connection.readySaved": "「连接并恢复」继续选中的历史对话；「连接并新建」开始新对话，原有会话仍保留在历史中。",
+  "connection.ready": "已准备好连接 {name}，将沿用该智能体已有的 CLI 登录配置。",
+  "connection.newHelp": "连接所选智能体并开始新对话，原有会话仍保留在历史中。",
+  "connection.resumeHelp": "连接所选智能体并恢复当前选中的历史对话。",
+  "connection.firstDownload": "首次连接可能需要下载适配器，因此会稍慢一些。",
+  "connection.steps": "连接准备",
+  "connection.chooseAgent": "选择已安装的智能体",
+  "connection.startConversation": "开始新对话，或恢复历史对话",
   "theme.label": "主题",
   "theme.system": "跟随系统",
   "theme.light": "浅色",
@@ -547,7 +582,7 @@ const zhCN: Dictionary = {
   "session.session": "会话",
   "session.saved": "已保存",
   "session.connected": "已连接",
-  "session.idle": "空闲",
+  "session.idle": "未连接",
   "session.loadUnsupported": "不支持 loadSession",
   "session.loadOk": "loadSession 可用",
   "session.resumeDisabledBefore": "无法恢复：agent 未声明 ",
