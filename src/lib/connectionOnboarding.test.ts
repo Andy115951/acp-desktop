@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Zustand's server snapshot is deliberately the store's initial state. These
 // static-markup checks need the explicit scenario snapshot instead; real hook
 // subscriptions and click behavior are exercised by the browser acceptance.
+vi.mock("../CustomAgents", () => ({
+  CustomAgents: ({ disabled }: { disabled: boolean }) => createElement("div", { "data-custom-editor-disabled": String(disabled) }),
+}));
 vi.mock("../store/session", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../store/session")>();
   return { ...actual, useSessionStore: Object.assign(() => actual.useSessionStore.getState(), actual.useSessionStore) };
@@ -41,6 +44,14 @@ beforeEach(() => {
 });
 
 describe("connection discovery and preparation", () => {
+  it("keeps the custom profile editor usable while its own form locks navigation", () => {
+    useAgentsStore.setState({customEditing:true});
+    const html=render();
+    expect(html).toContain('data-custom-editor-disabled="false"');
+    expect(html).toMatch(/class="new-chat-button"[^>]*disabled/);
+    useSessionStore.setState({connecting:true});
+    expect(render()).toContain('data-custom-editor-disabled="true"');
+  });
   it("keeps Connect explicit both before first use and with saved history", () => {
     expect(primaryButton(render())).toMatch(/>Connect<\/button>/);
     useSessionStore.setState({ savedSessionId: "saved-session" });

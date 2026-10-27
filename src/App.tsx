@@ -323,7 +323,7 @@ export default function App() {
             );
           })}
         </ul>
-        <CustomAgents locale={locale} disabled={connected || contextLocked} />
+        <CustomAgents locale={locale} disabled={connected || busy || connecting || submitting || configuring || switching || !!permission} />
 
           </details>
           <details className="sidebar-details">
