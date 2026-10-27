@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChatIcon } from "./ChatIcon";
+import { MessageComposer } from "./MessageComposer";
 import { CustomAgents } from "./CustomAgents";
 import { AgentSessionInfo } from "./AgentSessionInfo";
 import { PermissionCard } from "./PermissionCard";
@@ -14,7 +15,6 @@ import {
   canConnectSelectedAgent,
   canResumeSession,
   canSendPrompt,
-  draftEnterShouldSend,
 } from "./lib/sessionUiGates";
 import { agentAuthHint, agentDetailHint } from "./lib/agentHints";
 import { shouldDisconnectOnAgentSwitch } from "./lib/agentSwitch";
@@ -78,7 +78,6 @@ export default function App() {
     bindEvents,
   } = useSessionStore();
   const { locale, hydrateLocale, setLocale, theme, setTheme } = useUiStore();
-  const composingRef = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
@@ -445,23 +444,12 @@ export default function App() {
             <div className="session-options-content"><AgentSessionInfo metadata={metadata?.sessionId === sessionId ? metadata : null} locale={locale}
               disabled={busy || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /></div>
           </details>}
-          <div className="composer-box">
-            <textarea rows={2} value={draft} onChange={(e) => setDraft(e.target.value)}
-              onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={() => { composingRef.current = false; }} onBlur={() => { composingRef.current = false; }}
-              onKeyDown={(e) => {
-                if (!canSend || !draftEnterShouldSend(!!permission, e.key, e.shiftKey, composingRef.current || e.nativeEvent.isComposing, e.nativeEvent.keyCode)) return;
-                e.preventDefault(); void send();
-              }}
-              disabled={!connected || busy || configuring || switching || !!permission}
-              placeholder={connected ? usingFake ? t(locale, "session.placeholderConnectedFake") : t(locale, "session.placeholderConnected", { name: selected?.name ?? "agent" }) : t(locale, "session.placeholderIdle")}
-              aria-label={t(locale, "chat.message")} aria-describedby="composer-help" />
-            <div className="composer-actions">
-              <span className="composer-agent"><span className={`connection-dot ${connected ? "is-connected" : ""}`} aria-hidden="true" />{selected?.name ?? "Agent"}</span>
-              {canCancel ? <button type="button" className="stop-button" onClick={() => void cancel()} title={t(locale, permission ? "session.cancelTitleAsk" : "session.cancelTitleBusy")}><ChatIcon name="stop" />{t(locale, "session.cancel")}</button>
-                : <button type="button" className="send-button" onClick={() => void send()} disabled={!canSend} aria-label={t(locale, "session.send")} title={t(locale, "session.send")}><ChatIcon name="send" /></button>}
-            </div>
-          </div>
-          <p id="composer-help" className="composer-help">{t(locale, "chat.composerHelp")}</p>
+          <MessageComposer draft={draft} locale={locale}
+            disabled={!connected || switching || !!permission} working={busy || configuring}
+            permissionOpen={!!permission} canSend={canSend} canCancel={canCancel} connected={connected}
+            agentName={selected?.name ?? "Agent"}
+            placeholder={connected ? usingFake ? t(locale, "session.placeholderConnectedFake") : t(locale, "session.placeholderConnected", { name: selected?.name ?? "agent" }) : t(locale, "session.placeholderIdle")}
+            onDraftChange={setDraft} onSend={send} onCancel={cancel} />
         </footer>
       </section>
     </main>

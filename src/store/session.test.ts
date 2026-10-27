@@ -45,3 +45,53 @@ describe("permission decision races", () => {
     expect(useSessionStore.getState().busy).toBe(true);
   });
 });
+
+describe("next-draft continuity", () => {
+  beforeEach(() => {
+    invoke.mockReset();
+    useSessionStore.setState({ connected: true, busy: false, permission: null, configuring: false,
+      switching: false, sessionId: "draft-session", draft: "original message", error: null, lines: [] });
+  });
+  it("restores an untouched failed submission for explicit retry", async () => {
+    invoke.mockRejectedValueOnce(new Error("network unavailable"));
+    await useSessionStore.getState().send();
+    expect(useSessionStore.getState()).toMatchObject({ draft: "original message", busy: false, error: "network unavailable" });
+  });
+  it("keeps the next draft while working and never queues it automatically", async () => {
+    let finish!: (value: string) => void;
+    invoke.mockImplementation(() => new Promise<string>((resolve) => { finish = resolve; }));
+    const sending = useSessionStore.getState().send();
+    useSessionStore.getState().setDraft("next message");
+    await useSessionStore.getState().send();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(useSessionStore.getState()).toMatchObject({ draft: "next message", busy: true });
+    finish("EndTurn"); await sending;
+    expect(useSessionStore.getState()).toMatchObject({ draft: "next message", busy: false });
+  });
+  it("preserves a newer draft when the previous submission fails", async () => {
+    let fail!: (error: Error) => void;
+    invoke.mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+    const sending = useSessionStore.getState().send();
+    useSessionStore.getState().setDraft("keep this next message");
+    fail(new Error("network unavailable")); await sending;
+    expect(useSessionStore.getState().draft).toBe("keep this next message");
+  });
+  it("respects a draft that the user typed and then explicitly cleared", async () => {
+    let fail!: (error: Error) => void;
+    invoke.mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+    const sending = useSessionStore.getState().send();
+    useSessionStore.getState().setDraft("temporary next draft");
+    useSessionStore.getState().setDraft("");
+    fail(new Error("network unavailable")); await sending;
+    expect(useSessionStore.getState().draft).toBe("");
+  });
+  it("never restores an old failed message into another connection", async () => {
+    let fail!: (error: Error) => void;
+    invoke.mockImplementation((command) => command === "send_prompt" ? new Promise((_resolve, reject) => { fail = reject; }) : Promise.resolve());
+    const sending = useSessionStore.getState().send();
+    await useSessionStore.getState().disconnect();
+    useSessionStore.setState({ connected: true, draft: "replacement conversation" });
+    fail(new Error("old failure")); await sending;
+    expect(useSessionStore.getState()).toMatchObject({ draft: "replacement conversation", error: null });
+  });
+});

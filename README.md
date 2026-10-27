@@ -74,6 +74,12 @@ open. See the [tested compatibility matrix](docs/COMPATIBILITY.md),
    before changing agent/workspace. Earlier conversations remain in history
    when starting a new session.
 
+The message input grows with your draft within the window. While a connected
+agent is replying, you can prepare the next message; it stays a draft until you
+send it after the current action finishes. Permission cards temporarily lock the
+input. If sending fails, an untouched submitted message returns to the input for
+an explicit retry; a newer draft or one you deliberately cleared takes priority.
+
 ## Develop
 
 Prerequisites: [Node.js](https://nodejs.org/) 22.23.4 for candidate parity, [Rust](https://rustup.rs/) 1.90 (pinned in `rust-toolchain.toml`), and OS webview deps ([Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) — on macOS that means Xcode CLT / WebKit).

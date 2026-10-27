@@ -113,6 +113,7 @@ type SessionState = {
 };
 
 let lineCounter = 0;
+let draftRevision = 0;
 let connectionGeneration = 0;
 let contextGeneration = 0;
 let connectionAgentId: string | null = null;
@@ -203,7 +204,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   lines: [],
   permission: null,
   draft: "",
-  setDraft: (v) => set({ draft: v }),
+  setDraft: (v) => { ++draftRevision; set({ draft: v }); },
   setConfig: async (id, value) => {
     const state = get();
     const option = state.metadata?.configOptions?.find(option => option.id === id);
@@ -386,6 +387,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     // Ask modal owns the turn; never queue a second prompt underneath it.
     if (get().permission || !get().connected || get().busy || get().configuring) return;
     const generation = connectionGeneration;
+    const sentDraftRevision = ++draftRevision;
     set({
       draft: "",
       busy: true,
@@ -411,6 +413,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         busy: false,
         error: e instanceof Error ? e.message : String(e),
         lines: sealTranscript(get().lines),
+        // Restore a failed submission only if the user has not edited (even
+        // typed and cleared) the next draft while the request was running.
+        ...(draftRevision === sentDraftRevision && !get().draft ? { draft: text } : {}),
       });
     }
   },
