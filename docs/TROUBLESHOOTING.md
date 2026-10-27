@@ -11,8 +11,11 @@ CLI login; it does not install vendor CLIs or offer a shared account/token store
    Copilot uses `copilot --acp`, and Codex/Claude use adapters. The latter two may
    download an adapter through npx if only the underlying CLI is detected.
 3. Start ACP Desktop, click its window when ready, pick the intended folder and
-   select the agent. Connect starts a new session; Resume loads the selected
-   saved session when supported. Read each permission request before deciding.
+   select an available agent. **Connect** (or **Connect & start new** with saved
+   history) starts a new session; **Connect & resume** loads the selected saved
+   session when supported. The preparation hint explains missing setup, and its
+   **Agents & settings** button opens the setup panel even with a hidden sidebar.
+   Read each permission request before deciding.
 4. Disconnect before changing workspace or agent. Resume and recent workspaces
    use local metadata; vendor storage remains the source of conversation history.
 

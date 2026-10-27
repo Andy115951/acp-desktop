@@ -127,6 +127,18 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
 .connection-dot { display: inline-block; width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--faint); }
 .connection-dot.is-connected { background: var(--success); box-shadow: 0 0 0 3px var(--border-soft); }
 .connection-toolbar { min-height: 45px; padding: 8px 28px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; }
+.connection-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; min-width: 0; }
+.connection-actions button { overflow-wrap: anywhere; }
+.connection-guidance { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 28px 10px; padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface); color: var(--secondary); font-size: 11px; line-height: 1.6; flex-shrink: 0; }
+.connection-guidance > p:first-child { flex: 1; min-width: min(100%, 180px); overflow-wrap: anywhere; }
+.connection-download-hint { width: 100%; color: var(--muted); font-size: 10px; }
+.connection-checklist { display: flex; flex-direction: column; gap: 12px; margin-top: 22px; text-align: left; }
+.connection-checklist li { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.step-number { display: grid; place-items: center; flex: 0 0 25px; width: 25px; height: 25px; border: 1px solid var(--border); border-radius: 50%; color: var(--muted); font-size: 11px; }
+.connection-checklist li[data-ready="true"] .step-number { background: var(--accent-surface); color: var(--accent); border-color: var(--accent); }
+.connection-checklist li > div { min-width: 0; }
+.connection-checklist li > div > span { display: block; color: var(--muted); font-size: 10px; }
+.connection-checklist strong { display: block; color: var(--secondary); font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
 .connection-status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); }
 .connection-status.is-working { color: var(--accent); }
 .fixture-badge { font-size: 10px; color: var(--warning); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; }
@@ -180,6 +192,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
   .transcript-content { padding: 22px 24px; }
   .composer-dock { padding: 8px 20px 12px; }
   .connection-toolbar { padding: 8px 20px; }
+  .connection-guidance { margin-left: 20px; margin-right: 20px; }
 }
 @media (max-width: 760px) {
   .chat-shell[data-sidebar-open="true"] .chat-sidebar { width: 100%; flex-basis: 100%; }
@@ -197,6 +210,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
   .chat-welcome h2 { font-size: 22px; margin-top: 0; }
   .chat-welcome > p:not(.welcome-eyebrow) { font-size: 12px; line-height: 1.6; margin-top: 10px; }
   .welcome-context { margin-top: 8px; }
+  .connection-checklist { gap: 8px; margin-top: 12px; }
   .composer-box textarea { min-height: 50px; padding-top: 10px; }
   .conversation-header { min-height: 58px; padding-top: 8px; padding-bottom: 8px; }
 }

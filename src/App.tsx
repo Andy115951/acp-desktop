@@ -82,12 +82,20 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+  const agentSettingsRef = useRef<HTMLDetailsElement>(null);
   const previousSidebarOpen = useRef(sidebarOpen);
   useEffect(() => {
     if (previousSidebarOpen.current && !sidebarOpen) sidebarToggleRef.current?.focus();
     previousSidebarOpen.current = sidebarOpen;
   }, [sidebarOpen]);
   const closeSidebar = () => setSidebarOpen(false);
+  const showAgentSettings = () => {
+    setSidebarOpen(true);
+    if (agentSettingsRef.current) agentSettingsRef.current.open = true;
+    // This focus change follows an explicit click, including when the sidebar
+    // was hidden. Never focus or activate the app during startup.
+    requestAnimationFrame(() => agentSettingsRef.current?.querySelector("summary")?.focus());
+  };
 
   useEffect(() => {
     void hydrateLocale();
@@ -161,7 +169,7 @@ export default function App() {
 
   const selected = agents.find((a) => a.id === selectedAgentId);
   const usingFake = !selectedAgentId.startsWith("custom-") && !!override?.usingOverride;
-  const canConnectAgent = canConnectSelectedAgent(
+  const canConnectAgent = !loading && canConnectSelectedAgent(
     selected?.connectable,
     selected?.available,
     usingFake,
@@ -185,6 +193,12 @@ export default function App() {
   const selectedEntry = catalog.sessions.find((entry) => entry.cwd === cwd && entry.sessionId === (sessionId ?? savedSessionId));
   const workspaceName = cwd?.split(/[\\/]/).filter(Boolean).slice(-1)[0];
   const contextLocked = connected || busy || !!permission || switching || customEditing;
+  const connecting = busy && !connected;
+  const preparationHint = !cwd ? "connection.chooseWorkspace"
+    : loading ? "connection.checking"
+    : !canConnectAgent ? "connection.missingAgent"
+    : switching || customEditing ? "connection.finishEditing"
+    : savedSessionId && loadSessionSupported !== false ? "connection.readySaved" : "connection.ready";
 
   return (
     <main className="chat-shell" data-sidebar-open={sidebarOpen} data-macos={macOS}>
@@ -198,7 +212,7 @@ export default function App() {
         </div>
         <div className="sidebar-scroll">
           <button type="button" className="new-chat-button" onClick={() => void connect("new")} disabled={!canConnectNew}>
-            <ChatIcon name="plus" /> {t(locale, "session.newSession")}
+            <ChatIcon name="plus" /> {t(locale, "connection.connectNew")}
           </button>
           <section className="sidebar-section" aria-label={t(locale, "session.cwd")}>
             <div className="sidebar-section-heading">
@@ -215,7 +229,7 @@ export default function App() {
               onArchive={archiveSavedSession} onRestore={restoreSavedSession}
               listSupported={sessionListSupported} listIncomplete={sessionListIncomplete} />
           </section>
-          <details className="sidebar-details">
+          <details ref={agentSettingsRef} className="sidebar-details">
             <summary>{t(locale, "layout.agentSettings")}</summary>
             <button type="button" onClick={() => void refresh()} disabled={loading || switching || customEditing} className="subtle-button my-3">
               {loading ? t(locale, "agents.checking") : t(locale, "agents.refresh")}
@@ -382,18 +396,29 @@ export default function App() {
 
         <div className="connection-toolbar">
           <span className={`connection-status ${busy ? "is-working" : ""}`} role="status">
-            {t(locale, permission ? "layout.awaitingPermission" : configuring ? "layout.configuring" : busy ? "layout.working" : connected ? "session.connected" : "session.idle")}
+            {t(locale, permission ? "layout.awaitingPermission" : configuring ? "layout.configuring" : connecting ? "connection.connecting" : busy ? "layout.working" : connected ? "session.connected" : "session.idle")}
             {usingFake && <span className="fixture-badge">{t(locale, "session.fakeTitle")}</span>}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="connection-actions">
             {!cwd && <button type="button" className="subtle-button" onClick={() => void pickFolder()} disabled={contextLocked}>{t(locale, "session.pickFolder")}</button>}
             {connected ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "session.disconnect")}</button> : <>
               {savedSessionId && <button type="button" className="subtle-button" onClick={() => void connect("resume")} disabled={!canResume}
-                title={loadSessionSupported === false ? t(locale, "session.resumeTitleUnsupported") : undefined}>{t(locale, "session.resume")}</button>}
-              <button type="button" className="connect-button" onClick={() => void connect("new")} disabled={!canConnectNew}>{t(locale, savedSessionId ? "session.newSession" : "session.connect")}</button>
+                aria-describedby={!busy ? "connection-help" : undefined}
+                title={loadSessionSupported === false ? t(locale, "session.resumeTitleUnsupported") : t(locale, "connection.resumeHelp")}>{t(locale, "connection.connectResume")}</button>}
+              <button type="button" className="connect-button" onClick={() => void connect("new")} disabled={!canConnectNew}
+                aria-describedby={!busy ? "connection-help" : undefined}
+                title={t(locale, connecting ? "connection.connecting" : canConnectNew ? "connection.newHelp" : preparationHint, { name: selected?.name ?? t(locale, "chat.agent") })}>
+                {t(locale, connecting ? "connection.connecting" : savedSessionId ? "connection.connectNew" : "session.connect")}
+              </button>
             </>}
           </div>
         </div>
+        {!connected && !busy && <div className="connection-guidance" id="connection-help" role="status">
+          <p>{t(locale, preparationHint, { name: selected?.name ?? t(locale, "chat.agent") })}</p>
+          {!loading && !canConnectAgent && <button type="button" className="subtle-button" onClick={showAgentSettings}>{t(locale, "layout.agentSettings")}</button>}
+          {cwd && canConnectAgent && selected?.detailCode === "npx_fallback" && !usingFake &&
+            <p className="connection-download-hint">{t(locale, "connection.firstDownload")}</p>}
+        </div>}
         {error && <div className="conversation-notice"><ErrorNotice error={error} locale={locale} /></div>}
         {detectError && !sidebarOpen && <div className="conversation-notice"><ErrorNotice error={detectError} locale={locale} /></div>}
         {loadSessionSupported === false && <p className="conversation-notice text-xs text-ui-warning">{t(locale, "session.resumeDisabledBefore")}<code>loadSession</code>{t(locale, "session.resumeDisabledAfter")}</p>}
@@ -404,7 +429,12 @@ export default function App() {
             <p className="welcome-eyebrow">ACP DESKTOP</p>
             <h2>{t(locale, connected ? "layout.readyTitle" : "layout.welcomeTitle")}</h2>
             <p>{t(locale, connected ? "layout.readyDescription" : "layout.welcomeDescription", { name: selected?.name ?? "Agent" })}</p>
-            <div className="welcome-context"><ChatIcon name="folder" /><span>{workspaceName ?? t(locale, "layout.noWorkspace")}</span><span aria-hidden="true">·</span><span>{selected?.name ?? "Agent"}</span></div>
+            {connected ? <div className="welcome-context"><ChatIcon name="folder" /><span>{workspaceName ?? t(locale, "layout.noWorkspace")}</span><span aria-hidden="true">·</span><span>{selected?.name ?? "Agent"}</span></div>
+              : <ol className="connection-checklist" aria-label={t(locale, "connection.steps")}>
+                <li data-ready={!!cwd}><span className="step-number" aria-hidden="true">1</span><div><span>{t(locale, "layout.workspace")}</span><strong title={cwd ?? undefined}>{workspaceName ?? t(locale, "session.pickFolder")}</strong></div></li>
+                <li data-ready={canConnectAgent}><span className="step-number" aria-hidden="true">2</span><div><span>{t(locale, "chat.agent")}</span><strong>{selected?.name ?? t(locale, "connection.chooseAgent")}{selected && !canConnectAgent && !loading ? ` · ${t(locale, "agents.missing")}` : ""}</strong></div></li>
+                <li><span className="step-number" aria-hidden="true">3</span><div><span>{t(locale, "session.connect")}</span><strong>{t(locale, "connection.startConversation")}</strong></div></li>
+              </ol>}
           </div>}>
           {permission && <div ref={permissionCardRef}><PermissionCard permission={permission} allowButtonRef={allowButtonRef} onRespond={(id) => void respondPermission(id)} locale={locale} /></div>}
         </ChatTranscript>

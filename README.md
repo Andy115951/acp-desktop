@@ -65,9 +65,14 @@ open. See the [tested compatibility matrix](docs/COMPATIBILITY.md),
 2. For development, follow [CONTRIBUTING.md](CONTRIBUTING.md) and start the app
    from source. Candidate archive trust and installation status are documented in
    [PACKAGING.md](docs/PACKAGING.md); no public beta install is certified yet.
-3. Click the app window, choose a folder and agent, then Connect. Send a prompt
-   and decide any requested permissions explicitly. Disconnect before changing
-   agent/workspace; Resume loads a selected saved session when supported.
+3. Click the app window, choose a folder and an available agent, then **Connect**.
+   With saved history, **Connect & start new** starts a fresh conversation and
+   **Connect & resume** restores the selected one when supported. The preparation
+   hint beside these controls explains missing setup; **Agents & settings** opens
+   the agent setup panel. The first Codex/Claude connection may download an adapter.
+4. Send a prompt and decide any requested permissions explicitly. Disconnect
+   before changing agent/workspace. Earlier conversations remain in history
+   when starting a new session.
 
 ## Develop
 
