@@ -11,6 +11,8 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "navigation.newConversation" | "navigation.newHelp" | "navigation.cancelConnection"
+  | "navigation.placeholderDraft" | "navigation.firstSend" | "navigation.connectingDraft"
   | "connection.connectNew" | "connection.connectResume" | "connection.connecting"
   | "connection.chooseWorkspace" | "connection.checking" | "connection.missingAgent"
   | "connection.finishEditing" | "connection.readySaved" | "connection.ready"
@@ -148,7 +150,7 @@ export type MessageKey =
   | "error.details"
   | "error.general"
   | "error.usageLimit"
-  | "error.staleSession"
+  | "error.staleSession" | "error.draftConflict"
   | "error.connection"
   | "error.auth"
   | "error.workspace"
@@ -199,6 +201,12 @@ export type MessageKey =
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "navigation.newConversation": "New conversation",
+  "navigation.newHelp": "Open an editable draft. Connect when ready or send the first message to connect automatically.",
+  "navigation.cancelConnection": "Cancel connection",
+  "navigation.placeholderDraft": "Write a message…",
+  "navigation.firstSend": "Send connects your selected agent and conversation. Your draft stays here if connection fails.",
+  "navigation.connectingDraft": "Connecting… Editing this draft keeps it for you to send after connecting.",
   "connection.connectNew": "Connect & start new",
   "connection.connectResume": "Connect & resume",
   "connection.connecting": "Connecting…",
@@ -206,14 +214,14 @@ const en: Dictionary = {
   "connection.checking": "Checking installed agents…",
   "connection.missingAgent": "{name} was not found locally. Open Agents & settings to check its setup or choose another installed agent.",
   "connection.finishEditing": "Finish updating the workspace or agent settings before connecting.",
-  "connection.readySaved": "Connect & resume continues the selected saved conversation. Connect & start new keeps earlier conversations in history.",
+  "connection.readySaved": "Connect & resume continues the selected saved conversation. New conversation opens a separate draft and keeps earlier conversations in history.",
   "connection.ready": "Ready to connect to {name}. Your agent uses its existing CLI login.",
   "connection.newHelp": "Connect to the selected agent and start a new conversation. Earlier sessions stay in history.",
   "connection.resumeHelp": "Connect to the selected agent and restore the selected saved conversation.",
   "connection.firstDownload": "The first connection may download an adapter and take a little longer.",
   "connection.steps": "Connection setup",
   "connection.chooseAgent": "Choose an installed agent",
-  "connection.startConversation": "Start new or resume a saved conversation",
+  "connection.startConversation": "Connect and send when ready",
   "theme.label": "Theme",
   "theme.system": "System",
   "theme.light": "Light",
@@ -232,7 +240,7 @@ const en: Dictionary = {
   "layout.readyTitle": "What shall we work on?",
   "layout.welcomeTitle": "A space to build.",
   "layout.readyDescription": "Send a message to {name}. Your conversation stays with your agent.",
-  "layout.welcomeDescription": "Choose a workspace and connect your agent to start a conversation.",
+  "layout.welcomeDescription": "Choose a workspace and agent, then write your first message.",
   "layout.sessionOptions": "Session options & commands",
   "layout.configFailed": "Update failed",
 
@@ -296,6 +304,7 @@ const en: Dictionary = {
   "error.details": "Technical details",
   "error.general": "The request could not be completed. Open technical details for diagnostics, then retry.",
   "error.usageLimit": "The agent reached its usage or rate limit. Check its usage and retry later.",
+  "error.draftConflict": "A separate New conversation draft is waiting. Copy this failed Resume message somewhere safe, then clear the input and choose New conversation to restore that draft.",
   "error.staleSession": "The saved session is missing or expired. Its Resume entry was cleared; choose another saved session or start a new one.",
   "error.connection": "The connection could not be verified. Check the CLI's certificate and network configuration.",
   "error.auth": "The agent could not authenticate. Check its local CLI login or API configuration, then reconnect.",
@@ -365,7 +374,7 @@ const en: Dictionary = {
   "history.discovered": "Sessions discovered from your agent and known to this app for this workspace. Disconnect to choose one, then Resume its conversation.",
   "history.listUnsupported": "This agent does not advertise session listing. Showing sessions known to this app for this agent and workspace.",
   "history.listIncomplete": "Some agent sessions could not be retrieved or saved. App-known and retrieved entries remain available; the conversation can continue.",
-  "history.disconnect": "Disconnect before changing the workspace or saved session.",
+  "history.disconnect": "Finish the current action before changing the workspace or conversation.",
   "history.failed": "Session metadata could not be loaded or saved. Your agent’s conversation history is unchanged; check local storage and try again.",
   "session.pickFolder": "Pick folder",
   "session.resume": "Resume",
@@ -382,7 +391,7 @@ const en: Dictionary = {
   "session.loadOk": "loadSession ok",
   "session.resumeDisabledBefore":
     "Resume disabled: agent did not advertise ",
-  "session.resumeDisabledAfter": ". Use New session.",
+  "session.resumeDisabledAfter": ". Choose New conversation.",
   "session.transcriptEmpty": "Transcript appears here…",
   "session.placeholderConnectedFake": "Message fake agent…",
   "session.placeholderConnected": "Message {name}…",
@@ -407,6 +416,12 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "navigation.newConversation": "新建对话",
+  "navigation.newHelp": "打开可编辑的草稿，准备好后可先连接，或直接发送首条消息自动连接。",
+  "navigation.cancelConnection": "取消连接",
+  "navigation.placeholderDraft": "写一条消息…",
+  "navigation.firstSend": "发送时会连接所选智能体和对话；连接失败时，草稿会保留在这里。",
+  "navigation.connectingDraft": "正在连接… 此时修改草稿，将保留到连接完成后由你手动发送。",
   "connection.connectNew": "连接并新建",
   "connection.connectResume": "连接并恢复",
   "connection.connecting": "正在连接…",
@@ -414,14 +429,14 @@ const zhCN: Dictionary = {
   "connection.checking": "正在检测本机智能体…",
   "connection.missingAgent": "未在本机找到 {name}。打开「智能体与设置」检查配置，或选择其他已安装的智能体。",
   "connection.finishEditing": "请先完成工作区或智能体设置，再连接。",
-  "connection.readySaved": "「连接并恢复」继续选中的历史对话；「连接并新建」开始新对话，原有会话仍保留在历史中。",
+  "connection.readySaved": "「连接并恢复」继续选中的历史对话；「新建对话」打开独立草稿，原有会话仍保留在历史中。",
   "connection.ready": "已准备好连接 {name}，将沿用该智能体已有的 CLI 登录配置。",
   "connection.newHelp": "连接所选智能体并开始新对话，原有会话仍保留在历史中。",
   "connection.resumeHelp": "连接所选智能体并恢复当前选中的历史对话。",
   "connection.firstDownload": "首次连接可能需要下载适配器，因此会稍慢一些。",
   "connection.steps": "连接准备",
   "connection.chooseAgent": "选择已安装的智能体",
-  "connection.startConversation": "开始新对话，或恢复历史对话",
+  "connection.startConversation": "准备好后，连接并发送",
   "theme.label": "主题",
   "theme.system": "跟随系统",
   "theme.light": "浅色",
@@ -440,7 +455,7 @@ const zhCN: Dictionary = {
   "layout.readyTitle": "我们来做点什么？",
   "layout.welcomeTitle": "从这里开始创造。",
   "layout.readyDescription": "向 {name} 发送消息，对话仍由你的智能体保存。",
-  "layout.welcomeDescription": "选择工作区，连接智能体，开始一段对话。",
+  "layout.welcomeDescription": "选择工作区与智能体，写下你的第一条消息。",
   "layout.sessionOptions": "会话选项与命令",
   "layout.configFailed": "更新失败",
 
@@ -504,6 +519,7 @@ const zhCN: Dictionary = {
   "error.details": "技术详情",
   "error.general": "请求未能完成。可展开技术详情查看诊断信息，然后重试。",
   "error.usageLimit": "智能体已达到用量或请求频率上限。请检查用量，稍后重试。",
+  "error.draftConflict": "另有一份新对话草稿。请先复制保存本次恢复失败的消息，再清空输入并选择新建对话，取回原来的新对话草稿。",
   "error.staleSession": "已保存的会话缺失或已过期，恢复记录已清除。可选择其他已保存会话或新建会话。",
   "error.connection": "无法验证连接。请检查本机 CLI 的证书和网络配置。",
   "error.auth": "智能体认证失败。请检查本机 CLI 的登录状态或 API 配置，然后重新连接。",
@@ -573,7 +589,7 @@ const zhCN: Dictionary = {
   "history.discovered": "列出智能体发现及本应用已知的当前工作区会话。断开后选择会话，再恢复对话。",
   "history.listUnsupported": "此智能体未声明会话列表能力，仅显示本应用已知的当前智能体、当前工作区会话。",
   "history.listIncomplete": "部分智能体会话无法获取或保存，已知及已获取的会话仍可用，可继续当前对话。",
-  "history.disconnect": "更换工作区或已保存的会话前，请先断开连接。",
+  "history.disconnect": "请等待当前操作结束，再更换工作区或对话。",
   "history.failed": "无法读取或保存会话元数据。智能体的对话历史未改变；请检查本地存储后重试。",
   "session.pickFolder": "选择文件夹",
   "session.resume": "恢复",

@@ -25,6 +25,34 @@ use crate::agent_backend::enrich_connect_error;
 use std::sync::{Mutex as StdMutex};
 use tokio::sync::{mpsc, oneshot, watch, Mutex};
 
+/// Every event carries a client connection identity so queued events from a
+/// stopped process cannot mutate a replacement conversation in the webview.
+#[derive(Clone)]
+struct SessionEmitter {
+    app: AppHandle,
+    token: String,
+}
+impl std::ops::Deref for SessionEmitter {
+    type Target = AppHandle;
+    fn deref(&self) -> &Self::Target {
+        &self.app
+    }
+}
+fn tagged_event(payload: impl Serialize, token: &str) -> Result<serde_json::Value, String> {
+    let mut value = serde_json::to_value(payload)
+        .map_err(|_| "Failed to encode session event".to_string())?;
+    value.as_object_mut().ok_or("Session event must be an object")?.insert(
+        "connectionToken".into(), serde_json::Value::String(token.into()),
+    );
+    Ok(value)
+}
+impl SessionEmitter {
+    fn emit(&self, event: &str, payload: impl Serialize) -> Result<(), String> {
+        self.app.emit(event, tagged_event(payload, &self.token)?)
+            .map_err(|_| "Failed to emit session event".into())
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamEvent {
@@ -252,7 +280,8 @@ impl AcpSession {
         resume_session_id: Option<String>,
         agent: AcpAgent,
         agent_id: String,
-    ) -> Result<(), String> {
+        connection_token: String,
+    ) -> Result<String, String> {
         let state = app.state::<AppState>();
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<HostCommand>();
@@ -263,16 +292,18 @@ impl AcpSession {
         let next_perm_id = Arc::new(Mutex::new(1u64));
         let config_snapshot = Arc::new(StdMutex::new(crate::session_config::ConfigSnapshot::default()));
         let session_id: Arc<Mutex<Option<SessionId>>> = Arc::new(Mutex::new(None));
+        let session_id_for_ready = session_id.clone();
         let (ready_tx, ready_rx) = oneshot::channel::<Result<(), String>>();
 
+        let emitter = SessionEmitter { app: app.clone(), token: connection_token };
         let pending_for_handler = pending_permission.clone();
         let pending_for_cmds = pending_permission.clone();
         let next_perm_for_handler = next_perm_id.clone();
-        let app_for_handler = app.clone();
-        let app_for_notif = app.clone();
+        let app_for_handler = emitter.clone();
+        let app_for_notif = emitter.clone();
         let cwd_for_task = cwd.clone();
         let session_id_for_task = session_id.clone();
-        let app_for_status = app.clone();
+        let app_for_status = emitter.clone();
         let resume_for_task = resume_session_id;
         let agent_for_task = agent;
         let agent_id_for_task = agent_id.clone();
@@ -697,7 +728,12 @@ impl AcpSession {
 
         // Wait until initialize + session/new|load finishes (or fails).
         match ready_rx.await {
-            Ok(result) => result,
+            Ok(result) => {
+                result?;
+                session_id_for_ready.lock().await.as_ref()
+                    .map(|id| id.0.to_string())
+                    .ok_or_else(|| "ACP handshake completed without a session id".to_string())
+            },
             Err(_) => {
                 clear_session_slot(&app);
                 Err("ACP thread exited before connect ready".into())
@@ -877,7 +913,7 @@ fn stream_event_for_session_update(update: &SessionUpdate) -> Option<StreamEvent
     Some(StreamEvent { kind, text, tool })
 }
 
-fn emit_session_update(app: &AppHandle, notification: &SessionNotification, agent_id: &str, cwd: &str, config: &StdMutex<crate::session_config::ConfigSnapshot>) {
+fn emit_session_update(app: &SessionEmitter, notification: &SessionNotification, agent_id: &str, cwd: &str, config: &StdMutex<crate::session_config::ConfigSnapshot>) {
     if let Some(event) = crate::session_metadata::metadata_event(agent_id, cwd, notification) {
         let accepted = event.config_options.as_ref().is_none_or(|options| config.lock().unwrap().update(&event.session_id, options.clone()));
         if accepted { let _ = app.emit("acp://metadata", event); }
@@ -900,7 +936,7 @@ fn emit_session_update(app: &AppHandle, notification: &SessionNotification, agen
 ///
 /// Returns how many `session/update` notifications were drained.
 async fn drain_load_replay(
-    app: &AppHandle,
+    app: &SessionEmitter,
     mut session: agent_client_protocol::ActiveSession<'static, Agent>,
     agent_id: &str,
     cwd: &str,
@@ -973,6 +1009,13 @@ fn _kind_name(kind: &PermissionOptionKind) -> &'static str {
 
 #[cfg(test)]
 mod session_control_tests {
+    #[test]
+    fn session_events_carry_identity_without_losing_payload_fields() {
+        let value = super::tagged_event(serde_json::json!({"kind":"agent_message","text":"hello"}), "one").unwrap();
+        assert_eq!(value["kind"], "agent_message");
+        assert_eq!(value["text"], "hello");
+        assert_eq!(value["connectionToken"], "one");
+    }
     use super::*;
     use agent_client_protocol::schema::v1::{InitializeResponse, PromptResponse, StopReason};
     use agent_client_protocol::Responder;

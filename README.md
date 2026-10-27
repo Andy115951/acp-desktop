@@ -55,7 +55,7 @@ open. See the [tested compatibility matrix](docs/COMPATIBILITY.md),
 
 **Session configuration:** the connected agent can report select controls for model, mode, reasoning or other settings, including grouped choices. The app uses the reported IDs, current values and choices without hard-coded vendor defaults. Changing a choice waits for the agent response; rejected or timed-out changes retain the last reported values and show a retry notice. Controls and prompt sending are disabled while a change is pending, but Disconnect remains available. Live reports replace the option list. Missing reports remain unknown; unsupported control types are read-only and boolean controls are not advertised by this client. Configuration is session-local and is refreshed by the agent on Resume.
 
-**Saved sessions:** after Disconnect, choose an app-known session for the current agent/workspace and click Resume. New session keeps the earlier entries, and relaunch restores the most recently used session as the default. Existing cwd→sessionId preferences migrate automatically. Workspace/session selection is disabled until you disconnect; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. Use Recent workspaces to return to a previously opened folder. Rename changes only the app title; Archive app entry hides a record without deleting vendor history, and Archived sessions lets you restore it. These actions require a disconnected, idle session. Connect and Resume also discover vendor sessions when the agent advertises `sessionCapabilities.list`, following pagination for the selected workspace. Unsupported agents keep the app-known list. Discovery errors, repeated cursors or safety limits show an incomplete notice and keep existing entries usable (10 seconds total, up to 20 pages / 2,000 entries per connection). Local names, archives and stale-entry decisions are preserved.
+**Saved sessions:** click a history entry while idle to disconnect the current agent process and resume that conversation directly. **New conversation** opens an editable draft without starting a process; the first **Send** connects its selected agent/workspace and sends only after a successful handshake. Explicit **Connect** / **Connect & resume** remain available. New keeps earlier entries, and relaunch restores the most recently used vendor session as the default. Existing cwd→sessionId preferences migrate automatically. Navigation waits for active prompts, configuration changes and permission decisions; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. Use Recent workspaces to return to a previously opened folder. Rename changes only the app title; Archive app entry hides a record without deleting vendor history, and Archived sessions lets you restore it. These actions require a disconnected, idle session. Connect and Resume also discover vendor sessions when the agent advertises `sessionCapabilities.list`, following pagination for the selected workspace. Unsupported agents keep the app-known list. Discovery errors, repeated cursors or safety limits show an incomplete notice and keep existing entries usable (10 seconds total, up to 20 pages / 2,000 entries per connection). Local names, archives and stale-entry decisions are preserved.
 
 ## Quickstart
 
@@ -65,14 +65,24 @@ open. See the [tested compatibility matrix](docs/COMPATIBILITY.md),
 2. For development, follow [CONTRIBUTING.md](CONTRIBUTING.md) and start the app
    from source. Candidate archive trust and installation status are documented in
    [PACKAGING.md](docs/PACKAGING.md); no public beta install is certified yet.
-3. Click the app window, choose a folder and an available agent, then **Connect**.
-   With saved history, **Connect & start new** starts a fresh conversation and
-   **Connect & resume** restores the selected one when supported. The preparation
-   hint beside these controls explains missing setup; **Agents & settings** opens
-   the agent setup panel. The first Codex/Claude connection may download an adapter.
-4. Send a prompt and decide any requested permissions explicitly. Disconnect
-   before changing agent/workspace. Earlier conversations remain in history
-   when starting a new session.
+3. Click the app window, choose a folder and an available agent, then choose
+   **New conversation** or click an earlier conversation in history. New opens a
+   draft; history connects and resumes the chosen conversation when supported.
+   The preparation hint explains missing setup; **Agents & settings** opens the
+   setup panel. The first Codex/Claude connection may download an adapter.
+4. Write and **Send**. If needed, Send connects first and submits the unchanged
+   message once after initialization succeeds. Editing during connection keeps
+   the revised text for an explicit Send; **Cancel connection** keeps the draft.
+   Read permission requests before deciding. Idle agent/workspace/history changes
+   disconnect the previous process; active operations must finish first.
+
+Unsent drafts and the selected conversation are remembered separately for each
+agent/workspace/conversation while the app runs. They are held in memory and are
+lost when the app quits. A failed connection keeps the current draft. An expired
+Resume never creates a replacement conversation automatically: choose **New
+conversation** explicitly to recover its text. If another New draft is waiting,
+the app asks you to copy the failed message and clear the input before restoring
+that separate draft; neither message is silently overwritten.
 
 The message input grows with your draft within the window. While a connected
 agent is replying, you can prepare the next message; it stays a draft until you

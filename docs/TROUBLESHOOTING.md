@@ -11,13 +11,18 @@ CLI login; it does not install vendor CLIs or offer a shared account/token store
    Copilot uses `copilot --acp`, and Codex/Claude use adapters. The latter two may
    download an adapter through npx if only the underlying CLI is detected.
 3. Start ACP Desktop, click its window when ready, pick the intended folder and
-   select an available agent. **Connect** (or **Connect & start new** with saved
-   history) starts a new session; **Connect & resume** loads the selected saved
-   session when supported. The preparation hint explains missing setup, and its
-   **Agents & settings** button opens the setup panel even with a hidden sidebar.
-   Read each permission request before deciding.
-4. Disconnect before changing workspace or agent. Resume and recent workspaces
-   use local metadata; vendor storage remains the source of conversation history.
+   select an available agent. **New conversation** opens a draft; its first
+   **Send** connects and sends once after initialization. Clicking history resumes
+   that conversation directly. Explicit **Connect** / **Connect & resume** remain
+   available. The preparation hint explains missing setup; **Agents & settings**
+   opens the setup panel even with a hidden sidebar.
+4. Read each permission request before deciding. Navigation is protected during
+   active prompts, connection, configuration and permission decisions. Idle
+   workspace/agent/history changes disconnect the previous process. Unsent drafts
+   stay separate in memory for each context until the app quits; vendor storage
+   remains the source of conversation history. Editing during connection cancels
+   automatic submission, and **Cancel connection** retains the text. An expired
+   Resume requires explicit **New conversation**, never an automatic fallback.
 
 Candidate archives are not yet a verified end-user installation path. See
 [PACKAGING.md](PACKAGING.md) for actual trust status and the pending fresh-user

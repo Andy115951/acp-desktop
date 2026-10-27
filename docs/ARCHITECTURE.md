@@ -57,15 +57,23 @@ Metadata notifications for available commands, context usage and configuration o
 
 Stdout is ACP-only. Agent logs on stderr may be shown in a debug pane later; they must not be parsed as protocol.
 
+
+The `connect_agent` acknowledgment returns agent/cwd/session ID and a client-generated
+connection token only after New/Resume completes. First Send waits for this result
+before submitting the unchanged draft once. Editing or canceling invalidates its
+automatic dispatch. All host session events carry the same token so queued events
+from stopped connections cannot modify a replacement conversation. Async context,
+catalog and send results also check their operation generation before committing.
+
 ## Sessions and storage
 
 - Conversation / skill / auth state: **vendor directories** (e.g. `~/.grok`, Codex home), same as the TUI.
 - App preferences only: last workspace folder, selected agent id, UI locale (`ui.locale`), and per-agent session catalogs (`{agentId}.sessions.v1`) — via `tauri-plugin-store`. Catalog entries contain cwd, session ID, optional title, creation/last-used timestamps, unavailable status, and an optional archive timestamp. No messages, tool results or credentials are copied into them.
 - Each catalog imports the legacy `{agentId}.sessionByCwd` map once, retaining all valid workspace IDs. The legacy key is left intact; an existing catalog is authoritative so stale IDs are not imported again. Unknown schema versions are not overwritten. Metadata I/O is serialized to prevent concurrent status updates from losing sessions.
-- No unified cross-vendor transcript DB. Switching agents disconnects, clears the transcript/draft, and reloads that vendor's catalog. The Saved sessions picker filters app-known entries by the selected agent and workspace; Resume asks the vendor to replay the selected conversation. New session preserves earlier entries. A failed Resume marks only that entry unavailable.
+- No unified cross-vendor transcript DB. Idle agent/workspace/history navigation disconnects the current process, clears its transcript and reloads the selected context. Unsent drafts and the last selected target stay in memory, scoped by stable agent ID, cwd and vendor session ID (or a local New target). They are not persisted. History navigation resumes directly; New opens a draft without spawning a process. A failed Resume marks only that entry unavailable and requires explicit New rather than silently creating a replacement.
 - Recent workspaces (`recentWorkspaces.v1`) are shared across agents, bounded to 20 unique paths, and seeded from the old last-workspace preference. A successful folder choice updates the recent list and last folder together. Session lists remain scoped by both agent and cwd.
 - Rename edits only the app title (up to 120 UTF-16 code units). Archive sets an app-only tombstone; no vendor delete command is sent. Archived entries remain hidden after later status updates and can be restored from the archived list. Explicit metadata edits roll back the shared store cache on write failure and show an error.
-- Workspace/session selection, rename, archive and restore require a disconnected, idle session with no pending permission. Both the UI and store enforce this rule. Delayed metadata results cannot overwrite a newer selection, and status persistence uses the connection's agent identity rather than a possibly changed UI selection.
+- Navigation is blocked during connection, prompt submission/replies, configuration changes, permission decisions and context transitions. Rename, archive and restore additionally require a disconnected session. Both UI and store enforce these rules. Delayed metadata results cannot overwrite a newer selection, and status persistence uses the connection's agent identity rather than a possibly changed UI selection.
 - Launch hydrate runs **after** agent detect so `selectedAgentId` is known; if detect still flips mid-read, Resume is reloaded for the agent selected at commit time (never cross-vendor).
 - After initialize, Connect/Resume requests `session/list` only when `sessionCapabilities.list` is present. Discovery filters by the selected cwd, follows opaque cursors, deduplicates IDs and rejects foreign workspaces. It is bounded to 10 seconds total, 20 pages and 2,000 entries; repeated cursors, errors and limits produce an explicit incomplete notice, retaining app-known and partial results. Disconnect interrupts discovery through the existing connection shutdown path.
 - `acp://sessions` carries only agent/cwd, listing support, incomplete status and session metadata. The frontend imports it into the corresponding catalog without changing the selected ID or appending transcript content. Existing names, archive tombstones and unavailable flags win over vendor metadata. Unsupported agents retain the app-known picker; listing failure does not prevent session creation/loading.

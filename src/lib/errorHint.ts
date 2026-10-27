@@ -8,6 +8,7 @@ export function errorHintKey(error: string): MessageKey {
   if (/usage.?limit|quota|rate.?limit|plan or rate limit/i.test(error)) {
     return "error.usageLimit";
   }
+  if (error.startsWith("A separate New conversation draft exists.")) return "error.draftConflict";
   if (isSessionLoadFailedError(error)) return "error.staleSession";
   if (/certificate|UNABLE_TO_GET_ISSUER|TLS|SSL/i.test(error)) {
     return "error.connection";

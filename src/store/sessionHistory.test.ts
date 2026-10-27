@@ -22,7 +22,7 @@ beforeEach(async () => {
   await useSessionStore.getState().disconnect();
   vi.clearAllMocks();
   mocks.handlers.clear();
-  mocks.invoke.mockResolvedValue(undefined);
+  mocks.invoke.mockImplementation(async (command, args) => command === "connect_agent" ? { agentId: args.agentId, cwd: args.cwd, sessionId: args.resumeSessionId ?? "second", connectionToken: args.connectionToken } : undefined);
   mocks.load.mockResolvedValue(catalog);
   mocks.save.mockResolvedValue(catalog);
   mocks.invalidate.mockResolvedValue(catalog);
@@ -34,7 +34,7 @@ beforeEach(async () => {
   mocks.set.mockResolvedValue(undefined);
   mocks.persist.mockResolvedValue(undefined);
   useAgentsStore.setState({ selectedAgentId: "codex" });
-  useSessionStore.setState({ cwd: "/workspace", catalog, connected: false, busy: false, switching: false,
+  useSessionStore.setState({ drafts: {}, draftTarget: null, connecting: false, submitting: false, recoveryRequired: false, cwd: "/workspace", catalog, connected: false, busy: false, switching: false,
     catalogError: false, sessionListSupported: null, sessionListIncomplete: false, recentWorkspaces: [], workspaceError: false, permission: null, savedSessionId: "second", sessionId: null, error: null, loadSessionSupported: null,
     lines: [{ id: "old", kind: "agent_message", text: "old transcript" }], draft: "old draft" });
 });
@@ -114,9 +114,9 @@ describe("app-known session selection", () => {
     expect(useSessionStore.getState().lines).toEqual([]);
     expect(useSessionStore.getState().draft).toBe("");
     await useSessionStore.getState().connect("resume");
-    expect(mocks.invoke).toHaveBeenCalledWith("connect_agent", { agentId: "codex", cwd: "/workspace", resumeSessionId: "first" });
+    expect(mocks.invoke).toHaveBeenCalledWith("connect_agent", { agentId: "codex", cwd: "/workspace", resumeSessionId: "first", connectionToken: expect.any(String) });
   });
-  it.each([{ connected: true }, { busy: true }, { switching: true }, { permission: { requestId: 1, title: "Ask", detail: "", options: [] } }])(
+  it.each([{ busy: true }, { switching: true }, { permission: { requestId: 1, title: "Ask", detail: "", options: [] } }])(
     "blocks workspace and session replacement while active: %j", async (patch) => {
       useSessionStore.setState(patch);
       useSessionStore.getState().selectSavedSession("first");
@@ -216,6 +216,11 @@ describe("workspace and session management", () => {
 });
 
 describe("history I/O context races", () => {
+  it("retains text entered before initial preferences finish loading as a New draft", async () => {
+    useSessionStore.setState({cwd:null,savedSessionId:null,draftTarget:null,draft:"early draft"});
+    await useSessionStore.getState().hydrateFromPrefs();
+    expect(useSessionStore.getState()).toMatchObject({cwd:"/workspace",savedSessionId:null,draft:"early draft",draftTarget:{agentId:"codex",cwd:"/workspace",sessionId:null}});
+  });
   it("ignores an older agent's delayed catalog load", async () => {
     let finish!: (value: typeof catalog) => void;
     mocks.load.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
@@ -267,7 +272,7 @@ describe("history I/O context races", () => {
   it("restores the folder after initial agent detection changes during hydration", async () => {
     let finish!: (value: typeof catalog) => void;
     mocks.load.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-    useSessionStore.setState({ cwd: null });
+    useSessionStore.setState({ cwd: null, draft: "" });
     const hydration = useSessionStore.getState().hydrateFromPrefs();
     await flush();
     useAgentsStore.setState({ selectedAgentId: "copilot" });

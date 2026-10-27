@@ -24,6 +24,17 @@ fn detect_agents(app: tauri::AppHandle) -> Vec<AgentInfo> {
     agents
 }
 
+/// Authoritative handshake acknowledgment; the first Send never depends on
+/// webview event delivery arriving before the IPC command resolves.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConnectedSession {
+    agent_id: String,
+    cwd: String,
+    session_id: String,
+    connection_token: String,
+}
+
 /// Connect a built-in agent or saved custom launch profile via ACP stdio.
 ///
 /// UI must pass `agent_id` from `detect_agents` (e.g. `"grok"`). Vendor spawn
@@ -34,7 +45,8 @@ async fn connect_agent(
     agent_id: String,
     cwd: String,
     resume_session_id: Option<String>,
-) -> Result<(), String> {
+    connection_token: String,
+) -> Result<ConnectedSession, String> {
     let path = PathBuf::from(&cwd);
     if !path.is_dir() {
         return Err(format!("Not a directory: {cwd}"));
@@ -51,9 +63,10 @@ async fn connect_agent(
             .map_err(|_| "Failed to configure agent.".to_string())?
     };
     // Awaits initialize + session/new|load so Connect stays busy until ready.
-    AcpSession::start(app, path, resume_session_id, agent, agent_id.clone())
+    let session_id = AcpSession::start(app, path, resume_session_id, agent, agent_id.clone(), connection_token.clone())
         .await
-        .map_err(|e| enrich_connect_error(&agent_id, &e))
+        .map_err(|e| enrich_connect_error(&agent_id, &e))?;
+    Ok(ConnectedSession { agent_id, cwd, session_id, connection_token })
 }
 
 #[tauri::command]

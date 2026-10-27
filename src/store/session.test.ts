@@ -8,7 +8,7 @@ const permission: PermissionRequest = { requestId: 1, title: "Test", detail: "",
 describe("permission decision races", () => {
   beforeEach(() => {
     invoke.mockReset();
-    useSessionStore.setState({ permission, connected: true, sessionId: "same-id", lines: [{ id: "tool-row", kind: "tool_call", text: "Test", tool: { id: "tool-1" } }] });
+    useSessionStore.setState({ drafts: {}, draftTarget: null, connecting: false, submitting: false, recoveryRequired: false, permission, connected: true, sessionId: "same-id", lines: [{ id: "tool-row", kind: "tool_call", text: "Test", tool: { id: "tool-1" } }] });
   });
   it("retains a newer pending request when the previous decision resolves", async () => {
     let finish!: () => void;
@@ -49,7 +49,7 @@ describe("permission decision races", () => {
 describe("next-draft continuity", () => {
   beforeEach(() => {
     invoke.mockReset();
-    useSessionStore.setState({ connected: true, busy: false, permission: null, configuring: false,
+    useSessionStore.setState({ drafts: {}, draftTarget: null, connecting: false, submitting: false, recoveryRequired: false, connected: true, busy: false, permission: null, configuring: false,
       switching: false, sessionId: "draft-session", draft: "original message", error: null, lines: [] });
   });
   it("restores an untouched failed submission for explicit retry", async () => {

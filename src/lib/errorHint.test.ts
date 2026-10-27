@@ -14,6 +14,7 @@ describe("error guidance", () => {
       .toBe("error.staleSession");
   });
   it.each([
+    ["A separate New conversation draft exists. Copy or clear this failed Resume draft before opening New conversation.", "error.draftConflict"],
     ["UNABLE_TO_GET_ISSUER_CERT", "error.connection"],
     ["API Key disabled: 403", "error.auth"],
     ["failed to spawn process", "error.startup"],
