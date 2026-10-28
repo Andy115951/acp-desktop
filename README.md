@@ -312,3 +312,26 @@ available when reopened, with a notice explaining its navigation lock. A new
 permission request dismisses settings and focuses the inline decision card.
 Reported session options stay beside the composer, and configuration failures
 remain visible even when those controls are collapsed.
+
+
+### Keyboard shortcuts
+
+Choose **Keyboard shortcuts** below the message input, or open its section in
+**Settings**, to see the current platform's bindings. These are app-window actions;
+they do not run while another application is active.
+
+| Action | macOS | Other desktop builds |
+| --- | --- | --- |
+| New conversation draft | Command+Shift+O | Ctrl+Shift+O |
+| Focus message input | Command+Shift+L | Ctrl+Shift+L |
+| Focus saved-conversation search | Command+Shift+F | Ctrl+Shift+F |
+| Open Settings | Command+, | Ctrl+, |
+
+New preserves the current conversation's draft and opens a separate draft without
+connecting or sending. Search opens the sidebar when needed. Busy/connecting or
+configuration actions block New, while explicit draft/search focus remains available.
+Settings and unfinished editors retain focus; finish or close them before navigating.
+Permission requests take priority over app shortcuts. Modified, repeating or composing
+Enter does not send a message or decide a permission. Platform labels describe the
+implemented bindings; native acceptance evidence is recorded separately in the
+[compatibility matrix](docs/COMPATIBILITY.md).

@@ -1,9 +1,11 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { SESSION_TITLE_LIMIT, type SessionCatalog, type SessionEntry } from "./lib/sessionCatalog";
 import { searchSavedSessions, sessionDisplayTitle } from "./lib/sessionSearch";
 import { t, type Locale } from "./lib/i18n";
 
-export function SessionHistory({ catalog, cwd, savedSessionId, disabled, editingDisabled = disabled, failed, locale, onSelect, onRename, onArchive, onRestore, listSupported, listIncomplete, variant = "select" }: {
+export function SessionHistory({ catalog, cwd, savedSessionId, disabled, editingDisabled = disabled, failed, locale, onSelect, onRename, onArchive, onRestore, listSupported, listIncomplete, variant = "select", searchFocusToken = 0, searchTitle }: {
+  searchFocusToken?: number;
+  searchTitle?: string;
   variant?: "select" | "list";
   catalog: SessionCatalog;
   cwd: string | null;
@@ -21,6 +23,12 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, editing
 }) {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const focusedSearchToken = useRef(searchFocusToken);
+  useLayoutEffect(() => {
+    if (searchFocusToken === focusedSearchToken.current) return;
+    focusedSearchToken.current = searchFocusToken;
+    if (searchFocusToken && cwd && document.hasFocus()) searchRef.current?.focus();
+  }, [searchFocusToken, cwd]);
   const countId = useId();
   const { entries, matches, filtering } = searchSavedSessions(catalog, cwd, query);
   const selected = entries.find((entry) => entry.sessionId === savedSessionId);
@@ -49,7 +57,7 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, editing
             event.preventDefault(); clearSearch();
           }
         }}>
-          <input ref={searchRef} type="search" value={query} disabled={!cwd}
+          <input ref={searchRef} title={searchTitle} type="search" value={query} disabled={!cwd}
             onChange={(event) => setQuery(event.target.value)} aria-label={t(locale, "history.search")}
             aria-describedby={countId} placeholder={t(locale, "history.searchPlaceholder")} />
           {query && <button type="button" onClick={clearSearch} aria-label={t(locale, "history.clearSearch")} title={t(locale, "history.clearSearch")}><span aria-hidden="true">×</span></button>}

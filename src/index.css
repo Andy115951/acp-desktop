@@ -340,3 +340,11 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
 .history-management > * + * { margin-top: 9px; }
 @media (max-width: 760px) { .settings-panel { width: 100%; } .settings-header { height: 58px; } }
 @media (max-width: 760px) { .chat-shell[data-macos="true"] .settings-header { padding-left: 96px; } }
+
+.shortcut-help-button { display: block; margin-left: auto; font-size: 11px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; padding: 2px 4px; margin-top: 3px; }
+.shortcut-reference { font-size: 12px; color: var(--secondary); }
+.shortcut-reference > summary { cursor: pointer; }
+.shortcut-reference dl { margin: 12px 0; }
+.shortcut-reference dl > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.shortcut-reference kbd { white-space: nowrap; border: 1px solid var(--border); border-radius: 5px; padding: 2px 5px; background: var(--code); font-family: inherit; }
+.shortcut-reference p { color: var(--muted); line-height: 1.6; }

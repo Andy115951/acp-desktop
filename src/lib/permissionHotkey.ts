@@ -67,3 +67,10 @@ export function isQuietPermissionHostError(message: string): boolean {
 export function shouldDismissAskOnDisconnect(connected: boolean): boolean {
   return !connected;
 }
+
+/** Only deliberate unmodified decision keys may act on a pending permission. */
+export function permissionEventAction(event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "repeat" | "isComposing" | "keyCode" | "defaultPrevented">, options: PermissionOption[]): PermissionHotkeyAction | null {
+  if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey ||
+      event.repeat || event.isComposing || event.keyCode === 229) return null;
+  return permissionHotkeyAction(event.key, options);
+}

@@ -8,7 +8,7 @@ function fitContent(input: HTMLTextAreaElement) {
   input.style.height = `${input.scrollHeight}px`;
 }
 
-export function MessageComposer({ draft, locale, disabled, working, permissionOpen, canSend, canCancel, connected, connecting = false, focusToken = 0, agentName, placeholder, onDraftChange, onSend, onCancel }: {
+export function MessageComposer({ draft, locale, disabled, working, permissionOpen, canSend, canCancel, connected, connecting = false, focusToken = 0, agentName, placeholder, focusShortcut, onDraftChange, onSend, onCancel }: {
   draft: string;
   locale: Locale;
   disabled: boolean;
@@ -21,6 +21,7 @@ export function MessageComposer({ draft, locale, disabled, working, permissionOp
   focusToken?: number;
   agentName: string;
   placeholder: string;
+  focusShortcut?: string;
   onDraftChange: (text: string) => void;
   onSend: () => Promise<void>;
   onCancel: () => Promise<void>;
@@ -71,10 +72,11 @@ export function MessageComposer({ draft, locale, disabled, working, permissionOp
         onCompositionEnd={() => { composingRef.current = false; }}
         onBlur={() => { composingRef.current = false; }}
         onKeyDown={(event) => {
+          if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
           if (!canSend || !draftEnterShouldSend(permissionOpen, event.key, event.shiftKey, composingRef.current || event.nativeEvent.isComposing, event.nativeEvent.keyCode)) return;
           event.preventDefault(); submit();
         }}
-        disabled={disabled} placeholder={placeholder} aria-label={t(locale, "chat.message")} aria-describedby="composer-help" />
+        disabled={disabled} title={focusShortcut} placeholder={placeholder} aria-label={t(locale, "chat.message")} aria-describedby="composer-help" />
       <div className="composer-actions">
         <span className="composer-agent"><span className={`connection-dot ${connected ? "is-connected" : ""}`} aria-hidden="true" />{agentName}</span>
         {canCancel ? <button type="button" className="stop-button" onClick={() => void onCancel()} title={t(locale, permissionOpen ? "session.cancelTitleAsk" : "session.cancelTitleBusy")}><ChatIcon name="stop" />{t(locale, "session.cancel")}</button>
