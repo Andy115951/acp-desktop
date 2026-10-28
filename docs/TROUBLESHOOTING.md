@@ -28,6 +28,12 @@ Candidate archives are not yet a verified end-user installation path. See
 [PACKAGING.md](PACKAGING.md) for actual trust status and the pending fresh-user
 check. A source build is the current developer path.
 
+Settings is available from the conversation header and sidebar footer, including
+when the sidebar is hidden. It groups appearance, agent setup/custom profiles,
+session details and developer fixtures. Closing settings keeps unfinished custom
+profile edits; reopen it to finish or cancel the edit if navigation stays locked.
+Incoming permission requests dismiss the panel so their decision card stays visible.
+
 ## Common symptoms
 
 | Symptom | What to check |
@@ -39,7 +45,7 @@ check. A source build is the current developer path.
 | No commands, context or configuration | The agent may not report them. Unknown is not zero usage, and absent controls do not imply a broken connection. |
 | Configuration change fails | Retain the last reported selection, read the notice and retry an advertised value. Disconnect is available while waiting. Raw provider configuration errors are intentionally not exposed. |
 | Session list incomplete | Discovery is bounded and filtered to the selected agent/workspace. Existing local entries remain usable. Unsupported listing falls back to the app-known catalog. |
-| Cannot find a saved conversation | Check the selected agent/workspace and clear the sidebar search. Search matches titles/IDs, not message contents. Archived records are in Archived sessions; incomplete discovery keeps already known entries. Filtering never closes the selected conversation or clears its draft. |
+| Cannot find a saved conversation | Check the selected agent/workspace and clear the sidebar search. Search matches titles/IDs, not message contents. Archived records are under Manage conversations → Archived sessions; incomplete discovery keeps already known entries. Filtering never closes the selected conversation or clears its draft. |
 | Resume no longer available | A vendor may have removed/expired a session. Start New if appropriate; other entries and vendor storage are retained. Rename/Archive affect only app metadata. |
 | Custom profile cannot launch | Check executable permission, literal JSON argument array, ACP v1 support and non-secret environment names. The app sanitizes custom process diagnostics; inspect the trusted CLI locally rather than putting secrets into a profile. |
 | Startup seems unresponsive | Startup intentionally does not request focus. Click the window to interact. Report an unexpected focus change separately, including whether it happened at launch or during automation. |

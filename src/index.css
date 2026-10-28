@@ -318,3 +318,25 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
 @media (min-width: 761px) and (max-width: 900px) {
   .chat-shell[data-macos="true"] .sidebar-brand > span:not(.brand-mark) > span { display: none; }
 }
+
+/* Advanced setup stays outside the conversation; its modal owns keyboard focus. */
+.chat-shell { position: relative; }
+.settings-launch { display: flex; align-items: center; gap: 9px; color: var(--secondary); font-size: 12px; padding: 7px 0; text-align: left; }
+.settings-layer { position: absolute; inset: 0; z-index: 30; }
+.settings-layer[hidden] { display: none; }
+.settings-backdrop { position: absolute; inset: 0; background: rgb(0 0 0 / .22); }
+.settings-panel { position: absolute; inset: 0 0 0 auto; width: min(420px, 100%); display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-left: 1px solid var(--border); box-shadow: -12px 0 36px rgb(0 0 0 / .16); }
+.settings-header { height: 74px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border-soft); }
+.settings-header h2 { font-size: 16px; font-weight: 600; }
+.settings-header .icon-button { font-size: 24px; }
+.settings-scroll { overscroll-behavior: contain; overflow-y: auto; min-height: 0; padding: 18px 20px 30px; }
+.settings-scroll > * + * { margin-top: 18px; }
+.settings-appearance h3 { font-size: 12px; font-weight: 600; margin-bottom: 12px; }
+.settings-appearance .sidebar-preferences { margin-top: 10px; }
+.settings-scroll .sidebar-details { margin-top: 20px; }
+.settings-edit-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
+.history-management { margin: 10px 0; font-size: 11px; color: var(--muted); }
+.history-management > summary { cursor: pointer; margin-bottom: 9px; }
+.history-management > * + * { margin-top: 9px; }
+@media (max-width: 760px) { .settings-panel { width: 100%; } .settings-header { height: 58px; } }
+@media (max-width: 760px) { .chat-shell[data-macos="true"] .settings-header { padding-left: 96px; } }

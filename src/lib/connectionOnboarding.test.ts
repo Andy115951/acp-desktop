@@ -44,6 +44,15 @@ beforeEach(() => {
 });
 
 describe("connection discovery and preparation", () => {
+  it("exposes configuration failures outside collapsed controls and keeps settings discoverable", () => {
+    useSessionStore.setState({connected:true,configError:true});
+    const html=render();
+    const main=html.slice(0,html.indexOf('class="settings-layer"'));
+    expect(main).toContain('aria-label="Settings"');
+    expect(main).toContain('role="alert">The agent rejected the update');
+    expect(main).not.toContain('summary>Developer tools');
+    expect(main).toContain('aria-controls="app-settings"');
+  });
   it("keeps the custom profile editor usable while its own form locks navigation", () => {
     useAgentsStore.setState({customEditing:true});
     const html=render();

@@ -11,6 +11,7 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "settings.title" | "settings.close" | "settings.appearance" | "settings.resumeEditing" | "history.manage"
   | "navigation.newConversation" | "navigation.newHelp" | "navigation.cancelConnection"
   | "navigation.placeholderDraft" | "navigation.firstSend" | "navigation.connectingDraft"
   | "connection.connectNew" | "connection.connectResume" | "connection.connecting"
@@ -203,6 +204,11 @@ export type MessageKey =
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "settings.title": "Settings",
+  "settings.close": "Close settings",
+  "settings.appearance": "Appearance & language",
+  "settings.resumeEditing": "An unfinished agent change is waiting in Settings. Finish or cancel it to continue.",
+  "history.manage": "Manage conversations",
   "navigation.newConversation": "New conversation",
   "navigation.newHelp": "Open an editable draft. Connect when ready or send the first message to connect automatically.",
   "navigation.cancelConnection": "Cancel connection",
@@ -425,6 +431,11 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "settings.title": "设置",
+  "settings.close": "关闭设置",
+  "settings.appearance": "外观与语言",
+  "settings.resumeEditing": "设置中还有未完成的智能体修改，请完成或取消后继续。",
+  "history.manage": "管理对话",
   "navigation.newConversation": "新建对话",
   "navigation.newHelp": "打开可编辑的草稿，准备好后可先连接，或直接发送首条消息自动连接。",
   "navigation.cancelConnection": "取消连接",

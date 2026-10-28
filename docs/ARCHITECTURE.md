@@ -138,3 +138,17 @@ Known unsupported control kinds remain read-only; arbitrary unknown wire enum
 variants still depend on the pinned SDK schema and are not claimed as supported.
 
 Reference: [ACP v1 initialization and version negotiation](https://agentclientprotocol.com/protocol/v1/initialization).
+
+### Settings surface
+
+The settings surface is a modal side panel with a bounded scroll region. Its
+contents stay mounted while hidden so profile forms are not discarded on close.
+Explicit opening focuses the panel; profile editing focuses its Name field and
+content replacement retains focus inside the open modal without activating a
+background app. Tab cycles through visible controls
+(including only summaries of closed disclosures). Settings owns its keys and
+restores focus to the originating control, or the header trigger when that
+control disappears. Permission state hides the panel immediately and takes focus
+without a competing close/return callback. Conversation configuration errors stay
+visible outside collapsed session options and are repeated on the active settings
+surface. Settings UI state does not reconnect or submit the conversation.
