@@ -8,6 +8,7 @@ import { ErrorNotice } from "./ErrorNotice";
 import { ChatTranscript } from "./ChatTranscript";
 import { SessionHistory } from "./SessionHistory";
 import { WorkspacePicker } from "./WorkspacePicker";
+import { sessionDisplayTitle } from "./lib/sessionSearch";
 import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
@@ -70,6 +71,7 @@ export default function App() {
     lines,
     permission,
     draft,
+    draftTarget,
     setDraft,
     pickFolder,
     hydrateFromPrefs,
@@ -180,10 +182,13 @@ export default function App() {
     selected?.available,
     usingFake,
   );
+  // The selected agent changes before its old process finishes disconnecting.
+  // Keep that old context inert until reload binds the new draft identity.
+  const agentChanging = !!draftTarget && draftTarget.agentId !== selectedAgentId;
   const uiGates = {
     cwd,
     connected,
-    busy: busy || connecting || submitting || switching || configuring || customEditing,
+    busy: busy || connecting || submitting || switching || configuring || customEditing || agentChanging,
     permissionOpen: !!permission,
     draftTrimmed: !!draft.trim(),
     savedSessionId,
@@ -194,12 +199,14 @@ export default function App() {
   const canResume = canResumeSession(uiGates);
   const canConnectNew = canConnectNewSession(uiGates);
   const canSend = canSendPrompt(uiGates);
-  const canCancel = !connecting && !configuring && canCancelPrompt(uiGates);
+  const canCancel = !agentChanging && !connecting && !configuring && canCancelPrompt(uiGates);
   const authHint = agentAuthHint(selectedAgentId, usingFake, locale);
 
   const selectedEntry = catalog.sessions.find((entry) => entry.cwd === cwd && entry.sessionId === (sessionId ?? savedSessionId));
+  const conversationId = sessionId ?? savedSessionId;
+  const conversationTitle = conversationId ? sessionDisplayTitle(conversationId, selectedEntry?.title) : t(locale, "navigation.newConversation");
   const workspaceName = cwd?.split(/[\\/]/).filter(Boolean).slice(-1)[0];
-  const contextLocked = busy || connecting || submitting || configuring || !!permission || switching || customEditing;
+  const contextLocked = agentChanging || busy || connecting || submitting || configuring || !!permission || switching || customEditing;
   const canNavigate = !contextLocked;
   const focusConversation = () => {
     if (window.matchMedia("(max-width: 760px)").matches) {
@@ -213,7 +220,7 @@ export default function App() {
   const preparationHint = !cwd ? "connection.chooseWorkspace"
     : loading ? "connection.checking"
     : !canConnectAgent ? "connection.missingAgent"
-    : switching || customEditing ? "connection.finishEditing"
+    : agentChanging || switching || customEditing ? "connection.finishEditing"
     : savedSessionId && loadSessionSupported !== false ? "connection.readySaved" : "connection.ready";
 
   return (
@@ -239,7 +246,7 @@ export default function App() {
               disabled={contextLocked} locale={locale} onSelect={(path) => void selectWorkspace(path)} />
           </section>
           <section className="sidebar-section history-section" aria-label={t(locale, "history.label")}>
-            <SessionHistory catalog={catalog} cwd={cwd} savedSessionId={savedSessionId}
+            <SessionHistory key={JSON.stringify([selectedAgentId, cwd])} catalog={agentChanging ? { version: 1, sessions: [] } : catalog} cwd={cwd} savedSessionId={agentChanging ? null : savedSessionId}
               disabled={contextLocked} editingDisabled={connected || contextLocked} failed={catalogError} variant="list"
               locale={locale} onSelect={openSavedConversation} onRename={renameSavedSession}
               onArchive={archiveSavedSession} onRestore={restoreSavedSession}
@@ -323,7 +330,7 @@ export default function App() {
             );
           })}
         </ul>
-        <CustomAgents locale={locale} disabled={connected || busy || connecting || submitting || configuring || switching || !!permission} />
+        <CustomAgents locale={locale} disabled={connected || agentChanging || busy || connecting || submitting || configuring || switching || !!permission} />
 
           </details>
           <details className="sidebar-details">
@@ -396,7 +403,7 @@ export default function App() {
             <ChatIcon name="panel" />
           </button>
           <div className="conversation-heading">
-            <h1 title={selectedEntry?.title ?? undefined}>{selectedEntry?.title ?? t(locale, "navigation.newConversation")}</h1>
+            <h1 title={conversationTitle}>{conversationTitle}</h1>
             <p title={cwd ?? undefined}>{workspaceName ?? t(locale, "layout.noWorkspace")}</p>
           </div>
           <label className="agent-switcher">
@@ -417,7 +424,7 @@ export default function App() {
           </span>
           <div className="connection-actions">
             {!cwd && <button type="button" className="subtle-button" onClick={() => void pickFolder()} disabled={contextLocked}>{t(locale, "session.pickFolder")}</button>}
-            {connecting ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "navigation.cancelConnection")}</button> : connected ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "session.disconnect")}</button> : <>
+            {connecting ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "navigation.cancelConnection")}</button> : connected ? <button type="button" className="subtle-button" disabled={agentChanging || switching} onClick={() => void disconnect()}>{t(locale, "session.disconnect")}</button> : <>
               {savedSessionId && <button type="button" className="subtle-button" onClick={() => void connect("resume")} disabled={!canResume}
                 aria-describedby={!busy ? "connection-help" : undefined}
                 title={loadSessionSupported === false ? t(locale, "session.resumeTitleUnsupported") : t(locale, "connection.resumeHelp")}>{t(locale, "connection.connectResume")}</button>}
@@ -460,10 +467,10 @@ export default function App() {
           {connected && <details className="session-options">
             <summary>{t(locale, "layout.sessionOptions")}{configError && <span className="ml-2 text-ui-warning">{t(locale, "layout.configFailed")}</span>}</summary>
             <div className="session-options-content"><AgentSessionInfo metadata={metadata?.sessionId === sessionId ? metadata : null} locale={locale}
-              disabled={busy || connecting || submitting || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /></div>
+              disabled={agentChanging || busy || connecting || submitting || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /></div>
           </details>}
           <MessageComposer draft={draft} locale={locale}
-            disabled={switching || !!permission} working={busy || configuring} connecting={connecting} focusToken={composerFocus}
+            disabled={agentChanging || switching || !!permission} working={busy || configuring} connecting={connecting} focusToken={composerFocus}
             permissionOpen={!!permission} canSend={canSend} canCancel={canCancel} connected={connected}
             agentName={selected?.name ?? "Agent"}
             placeholder={connected ? usingFake ? t(locale, "session.placeholderConnectedFake") : t(locale, "session.placeholderConnected", { name: selected?.name ?? "agent" }) : t(locale, "navigation.placeholderDraft")}

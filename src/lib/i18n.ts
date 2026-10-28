@@ -106,6 +106,8 @@ export type MessageKey =
   | "history.restore"
   | "history.restoreNamed"
   | "history.unavailable"
+  | "history.search" | "history.searchPlaceholder" | "history.clearSearch"
+  | "history.matches" | "history.noMatches" | "history.selected" | "history.results"
   | "history.label"
   | "history.choose"
   | "history.empty"
@@ -353,6 +355,13 @@ const en: Dictionary = {
   "history.restore": "Restore",
   "history.restoreNamed": "Restore {name}",
   "history.unavailable": "Unavailable",
+  "history.search": "Search conversations",
+  "history.searchPlaceholder": "Search titles or IDs",
+  "history.clearSearch": "Clear conversation search",
+  "history.matches": "{count} of {total} conversations",
+  "history.noMatches": "No matching conversations. Try another title or ID, or clear the search.",
+  "history.selected": "Selected conversation",
+  "history.results": "Conversation results",
   "history.label": "Saved sessions",
   "history.choose": "Choose a session",
   "history.empty": "No saved sessions for this workspace",
@@ -371,7 +380,7 @@ const en: Dictionary = {
   "agentInfo.insert": "Insert /{name}",
   "agentInfo.insertHelp": "Insert a command before your draft, add any arguments, then send when ready.",
   "history.appKnown": "Sessions known to this app for the selected agent and workspace. Connect refreshes discovery when supported. Conversation history is restored by the agent when you Resume.",
-  "history.discovered": "Sessions discovered from your agent and known to this app for this workspace. Disconnect to choose one, then Resume its conversation.",
+  "history.discovered": "Sessions discovered from your agent and known to this app for this workspace. Choose a conversation while idle to resume it directly.",
   "history.listUnsupported": "This agent does not advertise session listing. Showing sessions known to this app for this agent and workspace.",
   "history.listIncomplete": "Some agent sessions could not be retrieved or saved. App-known and retrieved entries remain available; the conversation can continue.",
   "history.disconnect": "Finish the current action before changing the workspace or conversation.",
@@ -568,6 +577,13 @@ const zhCN: Dictionary = {
   "history.restore": "恢复记录",
   "history.restoreNamed": "恢复记录 {name}",
   "history.unavailable": "不可用",
+  "history.search": "搜索对话",
+  "history.searchPlaceholder": "搜索标题或会话 ID",
+  "history.clearSearch": "清空对话搜索",
+  "history.matches": "匹配 {count} 条，共 {total} 条对话",
+  "history.noMatches": "没有匹配的对话。请尝试其他标题或 ID，或清空搜索。",
+  "history.selected": "当前选中的对话",
+  "history.results": "对话搜索结果",
   "history.label": "已保存的会话",
   "history.choose": "选择会话",
   "history.empty": "此工作区暂无保存的会话",
@@ -586,7 +602,7 @@ const zhCN: Dictionary = {
   "agentInfo.insert": "插入 /{name}",
   "agentInfo.insertHelp": "将命令插入草稿前，补充参数后再发送。",
   "history.appKnown": "仅列出本应用已知的当前智能体、当前工作区会话；连接时按智能体支持的能力发现更多会话，恢复时由智能体加载对话历史。",
-  "history.discovered": "列出智能体发现及本应用已知的当前工作区会话。断开后选择会话，再恢复对话。",
+  "history.discovered": "列出智能体发现及本应用已知的当前工作区会话。空闲时选择会话即可直接恢复对话。",
   "history.listUnsupported": "此智能体未声明会话列表能力，仅显示本应用已知的当前智能体、当前工作区会话。",
   "history.listIncomplete": "部分智能体会话无法获取或保存，已知及已获取的会话仍可用，可继续当前对话。",
   "history.disconnect": "请等待当前操作结束，再更换工作区或对话。",
