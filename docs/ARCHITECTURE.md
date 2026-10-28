@@ -143,7 +143,9 @@ Reference: [ACP v1 initialization and version negotiation](https://agentclientpr
 
 The settings surface is a modal side panel with a bounded scroll region. Its
 contents stay mounted while hidden so profile forms are not discarded on close.
-Only explicit opening focuses the panel; Tab cycles through visible controls
+Explicit opening focuses the panel; profile editing focuses its Name field and
+content replacement retains focus inside the open modal without activating a
+background app. Tab cycles through visible controls
 (including only summaries of closed disclosures). Settings owns its keys and
 restores focus to the originating control, or the header trigger when that
 control disappears. Permission state hides the panel immediately and takes focus

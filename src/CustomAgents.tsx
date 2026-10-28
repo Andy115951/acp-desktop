@@ -89,7 +89,7 @@ export function CustomAgents({ locale, disabled }: { locale: Locale; disabled: b
     {editing && <form onSubmit={(event) => { event.preventDefault(); void save(); }} className="space-y-3">
       <fieldset disabled={disabled || pending} className="space-y-3">
         {id && <p className="break-all text-xs text-ui-faint">ID: {id}</p>}
-        <label className="block text-xs text-ui-muted">{t(locale, "custom.name")}<input className={field} value={name} required maxLength={100} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="block text-xs text-ui-muted">{t(locale, "custom.name")}<input autoFocus className={field} value={name} required maxLength={100} onChange={(e) => setName(e.target.value)} /></label>
         <label className="block text-xs text-ui-muted">{t(locale, "custom.executable")}<input className={field} value={executable} required placeholder="/path with spaces/agent" onChange={(e) => setExecutable(e.target.value)} /></label>
         <label className="block text-xs text-ui-muted">{t(locale, "custom.args")}<textarea className={`${field} font-mono`} rows={3} value={args} onChange={(e) => setArgs(e.target.value)} spellCheck={false} /></label>
         <p className="text-xs text-ui-faint">{t(locale, "custom.argsHelp")}</p>

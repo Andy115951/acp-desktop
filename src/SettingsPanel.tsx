@@ -1,4 +1,4 @@
-import { useRef, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { t, type Locale } from "./lib/i18n";
 
 /** Kept mounted so closing settings never discards an unfinished profile form. */
@@ -7,6 +7,19 @@ export function SettingsPanel({ open, locale, onClose, closeRef, children, macOS
   closeRef: RefObject<HTMLButtonElement | null>; children: ReactNode;
 }) {
   const panelRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !panelRef.current) return;
+    const panel = panelRef.current;
+    const keepFocus = () => {
+      // Editing/saving can replace the focused button. Keep keyboard input in
+      // the open modal, without activating a background application.
+      if (document.hasFocus() && !panel.contains(document.activeElement)) closeRef.current?.focus();
+    };
+    const observer = new MutationObserver(keepFocus);
+    observer.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "hidden", "open"] });
+    keepFocus();
+    return () => observer.disconnect();
+  }, [open, closeRef]);
   return <div className="settings-layer" hidden={!open} onKeyDown={(event) => {
     // Settings owns its keys; a/r/Enter/Escape must not decide a background Ask.
     event.stopPropagation();
