@@ -55,7 +55,7 @@ open. See the [tested compatibility matrix](docs/COMPATIBILITY.md),
 
 **Session configuration:** the connected agent can report select controls for model, mode, reasoning or other settings, including grouped choices. The app uses the reported IDs, current values and choices without hard-coded vendor defaults. Changing a choice waits for the agent response; rejected or timed-out changes retain the last reported values and show a retry notice. Controls and prompt sending are disabled while a change is pending, but Disconnect remains available. Live reports replace the option list. Missing reports remain unknown; unsupported control types are read-only and boolean controls are not advertised by this client. Configuration is session-local and is refreshed by the agent on Resume.
 
-**Saved sessions:** click a history entry while idle to disconnect the current agent process and resume that conversation directly. **New conversation** opens an editable draft without starting a process; the first **Send** connects its selected agent/workspace and sends only after a successful handshake. Explicit **Connect** / **Connect & resume** remain available. New keeps earlier entries, and relaunch restores the most recently used vendor session as the default. Existing cwd→sessionId preferences migrate automatically. Navigation waits for active prompts, configuration changes and permission decisions; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. Use Recent workspaces to return to a previously opened folder. Rename changes only the app title; Archive app entry hides a record without deleting vendor history, and Archived sessions lets you restore it. These actions require a disconnected, idle session. Connect and Resume also discover vendor sessions when the agent advertises `sessionCapabilities.list`, following pagination for the selected workspace. Unsupported agents keep the app-known list. Discovery errors, repeated cursors or safety limits show an incomplete notice and keep existing entries usable (10 seconds total, up to 20 pages / 2,000 entries per connection). Local names, archives and stale-entry decisions are preserved.
+**Saved sessions:** click a history entry while idle to disconnect the current agent process and resume that conversation directly. **New conversation** opens an editable draft without starting a process; the first **Send** connects its selected agent/workspace and sends only after a successful handshake. Explicit **Connect** / **Connect & resume** remain available. New keeps earlier entries, and relaunch restores the most recently used vendor session as the default. Existing cwd→sessionId preferences migrate automatically. Navigation waits for active prompts, configuration changes and permission decisions; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. Use Recent workspaces to return to a previously opened folder. Open **Manage conversations** below history for Rename, Archive and Archived sessions. Rename changes only the app title; Archive app entry hides a record without deleting vendor history, and Archived sessions lets you restore it. These actions require a disconnected, idle session. Connect and Resume also discover vendor sessions when the agent advertises `sessionCapabilities.list`, following pagination for the selected workspace. Unsupported agents keep the app-known list. Discovery errors, repeated cursors or safety limits show an incomplete notice and keep existing entries usable (10 seconds total, up to 20 pages / 2,000 entries per connection). Local names, archives and stale-entry decisions are preserved.
 
 
 **Find a conversation:** use **Search conversations** in the sidebar to match titles
@@ -195,7 +195,7 @@ For conversation rendering, `fake:stream` emits thought/reply chunks and
 `fake:tool` previews input, locations, updates and a diff after an Ask decision
 without writing a file. Set `ACP_DESKTOP_FAKE_RICH_REPLAY=1` when launching the
 app to include the Markdown fixture in fake Resume replay. The fake-agent
-toggle is under the collapsed **Developer tools** panel below the conversation.
+toggle is under **Settings → Developer tools**.
 
 Env alternatives:
 
@@ -210,7 +210,7 @@ ACP_DESKTOP_FAKE_AGENT=1 npm run tauri dev
 
 ## Custom ACP agents
 
-Open **Agents → Custom agents → Add custom agent** while disconnected. Set a
+Open **Settings → Agents & settings → Custom agents → Add custom agent** while disconnected. Set a
 name, an absolute executable path (spaces need no quoting) or a command on PATH,
 an argument array such as `["--acp", "--label", "My agent"]`, and optional
 non-secret environment overrides such as `{"PROFILE": "local"}`. Every argument
@@ -298,6 +298,17 @@ MIT. See [LICENSE](LICENSE).
 
 ### Appearance
 
-Use **Theme** in the sidebar footer to choose **System**, **Light**, or **Dark**. System follows macOS appearance changes while the app is running. The choice is stored locally in the webview and restored on restart; changing it does not reconnect your agent or clear your draft.
+Open **Settings** from the header or sidebar footer, then use **Theme** under **Appearance & language** to choose **System**, **Light**, or **Dark**. System follows macOS appearance changes while the app is running. The choice is stored locally in the webview and restored on restart; changing it does not reconnect your agent or clear your draft.
 
 On macOS, the conversation header replaces the separate window title bar. Native close/minimize/full-screen controls remain at the upper left; drag a non-interactive part of the header to move the window. Other desktop platforms retain their native title bars.
+
+### Settings
+
+Settings groups appearance/language, agent installation/login and custom profiles,
+technical session details and developer fixtures outside the normal conversation
+sidebar. Opening/closing it preserves the connection and message draft. Escape
+closes settings without canceling a running turn; an unfinished profile remains
+available when reopened, with a notice explaining its navigation lock. A new
+permission request dismisses settings and focuses the inline decision card.
+Reported session options stay beside the composer, and configuration failures
+remain visible even when those controls are collapsed.

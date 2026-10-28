@@ -81,6 +81,8 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, editing
         </select>
       </label>
       </>}
+      {(onRename || onArchive || onRestore) && <details className="history-management">
+        <summary>{t(locale, "history.manage")}</summary>
       {onRename && onArchive ? (
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={editingDisabled || !selected || editing}
@@ -112,12 +114,6 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, editing
             className="text-xs text-ui-muted">{t(locale, "history.cancel")}</button>
         </form>
       ) : null}
-      {variant === "list" ? <details className="history-help"><summary>{t(locale, "layout.historyHelp")}</summary>
-        <p>{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>
-      </details> : <p className="text-xs text-ui-faint">{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>}
-      {listIncomplete ? <p role="status" className="text-xs text-ui-warning">{t(locale, "history.listIncomplete")}</p> : null}
-      {disabled ? <p className="text-xs text-ui-muted">{t(locale, "history.disconnect")}</p> : null}
-      {failed ? <p role="alert" className="text-xs text-ui-warning">{t(locale, "history.failed")}</p> : null}
       {onRestore && archived.length > 0 ? (
         <details className="space-y-2 text-xs text-ui-muted">
           <summary className="cursor-pointer">{t(locale, "history.archived", { count: String(archived.length) })}</summary>
@@ -134,6 +130,14 @@ export function SessionHistory({ catalog, cwd, savedSessionId, disabled, editing
           </ul>
         </details>
       ) : null}
+      </details>}
+      {variant === "list" ? <details className="history-help"><summary>{t(locale, "layout.historyHelp")}</summary>
+        <p>{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>
+      </details> : <p className="text-xs text-ui-faint">{t(locale, listSupported === true ? "history.discovered" : listSupported === false ? "history.listUnsupported" : "history.appKnown")}</p>}
+      {listIncomplete ? <p role="status" className="text-xs text-ui-warning">{t(locale, "history.listIncomplete")}</p> : null}
+      {disabled ? <p className="text-xs text-ui-muted">{t(locale, "history.disconnect")}</p> : null}
+      {failed ? <p role="alert" className="text-xs text-ui-warning">{t(locale, "history.failed")}</p> : null}
+
     </div>
   );
 }
