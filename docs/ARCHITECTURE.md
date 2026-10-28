@@ -152,3 +152,17 @@ control disappears. Permission state hides the panel immediately and takes focus
 without a competing close/return callback. Conversation configuration errors stay
 visible outside collapsed session options and are repeated on the active settings
 surface. Settings UI state does not reconnect or submit the conversation.
+
+
+### App-local keyboard actions
+
+A window capture listener recognizes exact platform modifier chords from the
+shared `appShortcuts` contract. The same contract renders localized shortcut help
+and control titles. It does not register OS-level shortcuts or activate windows.
+Recognized actions are consumed before nested controls and permission hotkeys,
+then reuse the existing New/navigation/settings guards. Modal settings, local
+history editors and unfinished custom-profile edits own their focus. Search focus
+uses a consumed token initialized on context mount so an old request cannot replay
+when agent/workspace identity changes. Permission hotkeys separately reject
+modifiers, repeats, composition/keyCode 229 and consumed events; native modified
+Enter/Space button clicks are suppressed on the permission card as well.

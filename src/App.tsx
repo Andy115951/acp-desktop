@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { ShortcutReference, shortcutMessage } from "./ShortcutReference";
+import { appShortcut, canRunShortcut, shortcutLabel, shortcutAria } from "./lib/appShortcuts";
+import { permissionEventAction } from "./lib/permissionHotkey";
 import { SettingsPanel } from "./SettingsPanel";
 import { ChatIcon } from "./ChatIcon";
 import { MessageComposer } from "./MessageComposer";
@@ -10,7 +13,6 @@ import { ChatTranscript } from "./ChatTranscript";
 import { SessionHistory } from "./SessionHistory";
 import { WorkspacePicker } from "./WorkspacePicker";
 import { sessionDisplayTitle } from "./lib/sessionSearch";
-import { permissionHotkeyAction } from "./lib/permissionHotkey";
 import {
   canCancelPrompt,
   canConnectNewSession,
@@ -89,6 +91,8 @@ export default function App() {
     typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches);
   const [composerFocus, setComposerFocus] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchFocus, setSearchFocus] = useState(0);
+  const shortcutRef = useRef<HTMLDetailsElement>(null);
   const settingsCloseRef = useRef<HTMLButtonElement>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsReturnRef = useRef<HTMLElement | null>(null);
@@ -165,7 +169,7 @@ export default function App() {
   useEffect(() => {
     if (!permission) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      const action = permissionHotkeyAction(e.key, permission.options);
+      const action = permissionEventAction(e, permission.options);
       if (!action) return;
       e.preventDefault();
       if (action.type === "cancel") {
@@ -241,6 +245,49 @@ export default function App() {
     : agentChanging || switching || customEditing ? "connection.finishEditing"
     : savedSessionId && loadSessionSupported !== false ? "connection.readySaved" : "connection.ready";
 
+  const shortcutTitle = (action: "new" | "composer" | "search" | "settings") =>
+    `${t(locale, shortcutMessage[action])} (${shortcutLabel(action, macOS)})`;
+  const showShortcuts = (trigger: HTMLElement) => {
+    openSettings(trigger);
+    if (shortcutRef.current) shortcutRef.current.open = true;
+    requestAnimationFrame(() => {
+      if (document.hasFocus() && !useSessionStore.getState().permission) shortcutRef.current?.querySelector("summary")?.focus();
+    });
+  };
+
+  // Window-local capture also works before any element has received focus.
+  // It never registers an OS/global shortcut or activates the app.
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      const current = useSessionStore.getState();
+      const currentAgents = useAgentsStore.getState();
+      const changing = current.switching || !!current.draftTarget && current.draftTarget.agentId !== currentAgents.selectedAgentId;
+      if (current.permission && (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.repeat ||
+        event.isComposing || event.keyCode === 229) && (event.key === "Enter" || event.key === " ") &&
+        event.target instanceof Element && event.target.closest('[data-testid="permission-card"]')) {
+        // Suppress the button's native keyboard click as well as window hotkeys.
+        event.preventDefault(); event.stopPropagation(); return;
+      }
+      const action = appShortcut(event, macOS);
+      if (!action) return;
+      // Consume recognized chords even while gated; they must not fall through
+      // to native controls or the permission decision listener.
+      event.preventDefault(); event.stopPropagation();
+      if (!canRunShortcut(action, { permission: !!current.permission, settings: settingsOpen, customEditing: currentAgents.customEditing,
+        localEditor: event.target instanceof Element && !!event.target.closest(".history-management"),
+        canNavigate: !(changing || current.busy || current.connecting || current.submitting || current.configuring || current.permission || currentAgents.customEditing),
+        contextChanging: changing, cwd: !!current.cwd })) return;
+      if (action === "new") startConversation();
+      if (action === "composer") focusConversation();
+      if (action === "search") { setSidebarOpen(true); setSearchFocus(value => value + 1); }
+      if (action === "settings" && settingsTriggerRef.current) {
+        openSettings(document.activeElement instanceof HTMLElement ? document.activeElement : settingsTriggerRef.current);
+      }
+    };
+    window.addEventListener("keydown", onShortcut, true);
+    return () => window.removeEventListener("keydown", onShortcut, true);
+  });
+
   return (
     <main className="chat-shell" data-sidebar-open={sidebarOpen} data-macos={macOS}>
       <aside id="chat-sidebar" className="chat-sidebar" aria-label={t(locale, "layout.sidebar")} hidden={!sidebarOpen}>
@@ -252,7 +299,7 @@ export default function App() {
           </button>
         </div>
         <div className="sidebar-scroll">
-          <button type="button" className="new-chat-button" onClick={startConversation} disabled={!canNavigate}>
+          <button type="button" className="new-chat-button" title={shortcutTitle("new")} aria-keyshortcuts={shortcutAria("new", macOS)} onClick={startConversation} disabled={!canNavigate}>
             <ChatIcon name="plus" /> {t(locale, "navigation.newConversation")}
           </button>
           <section className="sidebar-section" aria-label={t(locale, "session.cwd")}>
@@ -268,7 +315,7 @@ export default function App() {
               disabled={contextLocked} editingDisabled={connected || contextLocked} failed={catalogError} variant="list"
               locale={locale} onSelect={openSavedConversation} onRename={renameSavedSession}
               onArchive={archiveSavedSession} onRestore={restoreSavedSession}
-              listSupported={sessionListSupported} listIncomplete={sessionListIncomplete} />
+              listSupported={sessionListSupported} listIncomplete={sessionListIncomplete} searchFocusToken={searchFocus} searchTitle={shortcutTitle("search")} />
           </section>
         </div>
         <div className="sidebar-footer">
@@ -297,7 +344,7 @@ export default function App() {
             </select>
           </label>
           <button ref={settingsTriggerRef} type="button" className="icon-button" disabled={!!permission}
-            aria-controls="app-settings" aria-expanded={settingsOpen} aria-label={t(locale, "settings.title")}
+            aria-controls="app-settings" aria-expanded={settingsOpen} aria-label={t(locale, "settings.title")} title={shortcutTitle("settings")} aria-keyshortcuts={shortcutAria("settings", macOS)}
             onClick={(event) => openSettings(event.currentTarget)}><ChatIcon name="settings" /></button>
           <button type="button" className="icon-button clear-conversation" onClick={clearTranscript} title={t(locale, "session.clear")} aria-label={t(locale, "session.clear")}><ChatIcon name="clear" /></button>
         </header>
@@ -363,13 +410,15 @@ export default function App() {
             permissionOpen={!!permission} canSend={canSend} canCancel={canCancel} connected={connected}
             agentName={selected?.name ?? "Agent"}
             placeholder={connected ? usingFake ? t(locale, "session.placeholderConnectedFake") : t(locale, "session.placeholderConnected", { name: selected?.name ?? "agent" }) : t(locale, "navigation.placeholderDraft")}
-            onDraftChange={setDraft} onSend={send} onCancel={cancel} />
+            onDraftChange={setDraft} onSend={send} onCancel={cancel} focusShortcut={shortcutTitle("composer")} />
+          <button type="button" className="shortcut-help-button" disabled={!!permission} aria-controls="app-settings" onClick={(event) => showShortcuts(event.currentTarget)}>{t(locale, "shortcuts.title")}</button>
         </footer>
       </section>
       <SettingsPanel macOS={macOS} open={settingsOpen && !permission} locale={locale} onClose={closeSettings} closeRef={settingsCloseRef}>
         {configError && <p className="settings-notice text-xs text-ui-warning" role="alert">{t(locale, "config.failed")}</p>}
         {error && <ErrorNotice error={error} locale={locale} />}
         {detectError && <ErrorNotice error={detectError} locale={locale} />}
+        <ShortcutReference ref={shortcutRef} locale={locale} macOS={macOS} />
         <section className="settings-appearance" aria-label={t(locale, "settings.appearance")}><h3>{t(locale, "settings.appearance")}</h3>
           <div className="sidebar-preferences">
             <label htmlFor="theme-select" className="text-xs text-ui-muted">{t(locale, "theme.label")}</label>

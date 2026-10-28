@@ -34,6 +34,12 @@ session details and developer fixtures. Closing settings keeps unfinished custom
 profile edits; reopen it to finish or cancel the edit if navigation stays locked.
 Incoming permission requests dismiss the panel so their decision card stays visible.
 
+Keyboard shortcuts are listed below the message input and in Settings. They only
+work in the app window. New is unavailable during an active action; a modal or
+unfinished editor keeps its own focus. Close or finish that surface first. During
+a permission request, use its explicit decision controls; modified Enter never
+authorizes the request.
+
 ## Common symptoms
 
 | Symptom | What to check |
