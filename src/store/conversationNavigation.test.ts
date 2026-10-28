@@ -71,6 +71,15 @@ describe("draft-first conversation navigation", () => {
     expect(state().draft).toBe("codex first");
     await state().selectWorkspace("/other"); expect(state().draft).toBe("other folder");
   });
+  it("guards old drafts during the gap between agent selection and context reload", async () => {
+    state().setDraft("belongs to codex");await state().connect("resume");
+    mocks.invoke.mockClear();useAgentsStore.setState({selectedAgentId:"copilot"});
+    await state().newConversation();await state().openConversation("second");await state().selectWorkspace("/other");await state().send();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(state()).toMatchObject({cwd:"/workspace",draft:"belongs to codex",draftTarget:{agentId:"codex"},sessionId:"first"});
+    await state().disconnect();await state().connect("new");
+    expect(mocks.invoke.mock.calls.map(call=>call[0])).toEqual(["disconnect_agent"]);
+  });
   it("keeps an unassigned draft when the first workspace is chosen", async () => {
     useSessionStore.setState({cwd:null,savedSessionId:null,draftTarget:null});state().setDraft("before folder");
     await state().selectWorkspace("/workspace");

@@ -137,8 +137,11 @@ function targetFor(state: SessionState): DraftTarget {
 function parkedDrafts(state: SessionState): ConversationDrafts {
   return rememberDraft(state.drafts, targetFor(state), state.draft);
 }
+function pendingAgentContext(state: SessionState): boolean {
+  return !!state.draftTarget && state.draftTarget.agentId !== currentAgentId();
+}
 function navigationBlocked(state: SessionState): boolean {
-  return state.busy || state.connecting || state.submitting || state.configuring || !!state.permission || state.switching || useAgentsStore.getState().customEditing;
+  return pendingAgentContext(state) || state.busy || state.connecting || state.submitting || state.configuring || !!state.permission || state.switching || useAgentsStore.getState().customEditing;
 }
 
 type CatalogEdit = { type: "rename"; title: string } | { type: "archive" } | { type: "restore"; sessionId: string };
@@ -305,7 +308,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   setConfig: async (id, value) => {
     const state = get();
     const option = state.metadata?.configOptions?.find(option => option.id === id);
-    if (!state.connected || state.busy || state.connecting || state.submitting || state.configuring || state.switching || state.permission || !state.sessionId
+    if (!state.connected || navigationBlocked(state) || !state.sessionId
       || state.metadata?.sessionId !== state.sessionId || !option?.writable || option.currentValue === value
       || !option.choices.some(choice => choice.value === value)) return;
     const generation = connectionGeneration;
@@ -321,7 +324,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   insertCommand: (name) => {
     const state = get();
-    if (!state.connected || state.busy || state.connecting || state.submitting || state.configuring || state.permission || state.switching || state.metadata?.sessionId !== state.sessionId
+    if (!state.connected || navigationBlocked(state) || state.metadata?.sessionId !== state.sessionId
       || !state.metadata?.commands?.some(command => command.name === name)) return;
     set({ draft: `/${name} ${state.draft}` });
   },
@@ -391,7 +394,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
     // Host now awaits handshake, but still guard double-clicks while busy /
     // already connected so we never stack a second connect_agent.
-    if (get().busy || get().connected || get().connecting || get().submitting || get().switching || get().permission || useAgentsStore.getState().customEditing) {
+    if (get().connected || navigationBlocked(get())) {
       return null;
     }
     const resumeSessionId =

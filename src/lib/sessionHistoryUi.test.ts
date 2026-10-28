@@ -6,6 +6,19 @@ import { readSessionCatalog, rememberSession } from "./sessionCatalog";
 import { WorkspacePicker } from "../WorkspacePicker";
 
 describe("saved session picker", () => {
+  it("offers a localized accessible search that stays usable while history navigation is locked", () => {
+    const html = renderToStaticMarkup(createElement(SessionHistory, {
+      catalog: readSessionCatalog(null, {"/one":"untitled-full-id"}), cwd:"/one", savedSessionId:"untitled-full-id",
+      disabled:true, failed:false, locale:"zh-CN", variant:"list", onSelect:()=>{},
+    }));
+    expect(html).toContain('type="search"');
+    expect(html).toContain('aria-label="搜索对话"');
+    expect(html).toContain('aria-label="匹配 1 条，共 1 条对话"');
+    expect(html).toMatch(/<input[^>]*type="search"[^>]*>/);
+    expect(html.match(/<input[^>]*type="search"[^>]*>/)?.[0]).not.toContain("disabled");
+    expect(html).toContain('aria-current="true"');
+    expect(html).toContain('title="untitled-full-id"');
+  });
   const catalog = rememberSession(readSessionCatalog(null, { "/one": "first", "/two": "other-workspace" }), "/one", "second", 1);
   it("shows only the workspace's IDs and marks the selected one", () => {
     const html = renderToStaticMarkup(createElement(SessionHistory, {

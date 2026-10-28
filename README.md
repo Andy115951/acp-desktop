@@ -57,6 +57,15 @@ open. See the [tested compatibility matrix](docs/COMPATIBILITY.md),
 
 **Saved sessions:** click a history entry while idle to disconnect the current agent process and resume that conversation directly. **New conversation** opens an editable draft without starting a process; the first **Send** connects its selected agent/workspace and sends only after a successful handshake. Explicit **Connect** / **Connect & resume** remain available. New keeps earlier entries, and relaunch restores the most recently used vendor session as the default. Existing cwd→sessionId preferences migrate automatically. Navigation waits for active prompts, configuration changes and permission decisions; a missing or expired session is removed from the picker without discarding other entries or deleting vendor history. Use Recent workspaces to return to a previously opened folder. Rename changes only the app title; Archive app entry hides a record without deleting vendor history, and Archived sessions lets you restore it. These actions require a disconnected, idle session. Connect and Resume also discover vendor sessions when the agent advertises `sessionCapabilities.list`, following pagination for the selected workspace. Unsupported agents keep the app-known list. Discovery errors, repeated cursors or safety limits show an incomplete notice and keep existing entries usable (10 seconds total, up to 20 pages / 2,000 entries per connection). Local names, archives and stale-entry decisions are preserved.
 
+
+**Find a conversation:** use **Search conversations** in the sidebar to match titles
+or session IDs in the selected agent/workspace. Matching ignores case and repeated
+whitespace; it searches local session metadata, not message contents. The count
+shows matching/total available entries. If the selected conversation does not
+match, it remains visible separately. Clear the filter to see the full list;
+switching agent/workspace resets it. Search never sends a message or changes the
+selected conversation. A saved conversation without a title displays its full ID.
+
 ## Quickstart
 
 1. Install and log in to your intended agent CLI independently. Check the
