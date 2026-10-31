@@ -174,6 +174,31 @@ async fn until_stopped<F: Future>(
     }
 }
 
+// Allow time for a first-use adapter download but avoid an indefinite handshake.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(90);
+
+enum ConnectWait {
+    Ready(Result<(), String>),
+    WorkerDropped,
+    TimedOut,
+}
+
+async fn await_connect_ready(
+    ready: oneshot::Receiver<Result<(), String>>,
+    session: &AcpSession,
+    timeout: Duration,
+) -> ConnectWait {
+    match tokio::time::timeout(timeout, ready).await {
+        Ok(Ok(result)) => ConnectWait::Ready(result),
+        Ok(Err(_)) => ConnectWait::WorkerDropped,
+        Err(_) => {
+            // Ensure the old worker has cleared its slot before enabling retry.
+            session.stop().await;
+            ConnectWait::TimedOut
+        }
+    }
+}
+
 struct PendingPermission {
     reply: oneshot::Sender<RequestPermissionResponse>,
 }
@@ -316,6 +341,7 @@ impl AcpSession {
             cwd,
             session_id,
         };
+        let session_for_ready = session.clone();
 
         // Install before spawn so clear_session_slot / Disconnect always see it.
         {
@@ -721,17 +747,18 @@ impl AcpSession {
             })?;
 
         // Wait until initialize + session/new|load finishes (or fails).
-        match ready_rx.await {
-            Ok(result) => {
+        match await_connect_ready(ready_rx, &session_for_ready, CONNECT_TIMEOUT).await {
+            ConnectWait::Ready(result) => {
                 result?;
                 session_id_for_ready.lock().await.as_ref()
                     .map(|id| id.0.to_string())
                     .ok_or_else(|| "ACP handshake completed without a session id".to_string())
             },
-            Err(_) => {
+            ConnectWait::WorkerDropped => {
                 clear_session_slot(&app);
                 Err("ACP thread exited before connect ready".into())
-            }
+            },
+            ConnectWait::TimedOut => Err("Connection timed out before the agent completed its handshake. Check the agent and try connecting again.".into()),
         }
     }
 
@@ -1190,6 +1217,60 @@ mod session_control_tests {
 
         stopped_tx.send_replace(true);
         tokio::time::timeout(DEADLINE, stop).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn connect_timeout_waits_for_cleanup_before_allowing_retry() {
+        let (cmd_tx, _commands) = mpsc::unbounded_channel();
+        let (shutdown, mut shutdown_rx) = watch::channel(false);
+        let (stopped_tx, stopped) = watch::channel(false);
+        let session = AcpSession {
+            cmd_tx, shutdown, stopped,
+            pending_permission: Arc::new(Mutex::new(None)),
+            next_perm_id: Arc::new(Mutex::new(1)),
+            cwd: PathBuf::from("."),
+            session_id: Arc::new(Mutex::new(None)),
+        };
+        let (ready_tx, ready_rx) = oneshot::channel();
+        let wait = await_connect_ready(ready_rx, &session, Duration::from_millis(10));
+        tokio::pin!(wait);
+        tokio::time::timeout(DEADLINE, async {
+            tokio::select! {
+                _ = &mut wait => panic!("timeout returned before worker cleanup"),
+                _ = shutdown_rx.wait_for(|shutdown| *shutdown) => {},
+            }
+        }).await.unwrap();
+        assert!(ready_tx.send(Ok(())).is_err(), "late ready must not revive the old session");
+        stopped_tx.send_replace(true);
+        assert!(matches!(tokio::time::timeout(DEADLINE, wait).await.unwrap(), ConnectWait::TimedOut));
+    }
+
+    #[tokio::test]
+    async fn connect_ready_preserves_result_without_shutdown() {
+        let (cmd_tx, _commands) = mpsc::unbounded_channel();
+        let (shutdown, shutdown_rx) = watch::channel(false);
+        let (_stopped_tx, stopped) = watch::channel(false);
+        let session = AcpSession {
+            cmd_tx, shutdown, stopped,
+            pending_permission: Arc::new(Mutex::new(None)),
+            next_perm_id: Arc::new(Mutex::new(1)),
+            cwd: PathBuf::from("."),
+            session_id: Arc::new(Mutex::new(None)),
+        };
+        let (ready_tx, ready_rx) = oneshot::channel();
+        ready_tx.send(Err("fixture failure".into())).unwrap();
+        assert!(matches!(await_connect_ready(ready_rx, &session, DEADLINE).await, ConnectWait::Ready(Err(e)) if e == "fixture failure"));
+        assert!(!*shutdown_rx.borrow());
+
+        let (ready_tx, ready_rx) = oneshot::channel();
+        ready_tx.send(Ok(())).unwrap();
+        assert!(matches!(await_connect_ready(ready_rx, &session, DEADLINE).await, ConnectWait::Ready(Ok(()))));
+        assert!(!*shutdown_rx.borrow());
+
+        let (ready_tx, ready_rx) = oneshot::channel();
+        drop(ready_tx);
+        assert!(matches!(await_connect_ready(ready_rx, &session, DEADLINE).await, ConnectWait::WorkerDropped));
+        assert!(!*shutdown_rx.borrow());
     }
 }
 
