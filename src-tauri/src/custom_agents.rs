@@ -412,6 +412,9 @@ mod tests {
     }
     #[test]
     fn custom_errors_preserve_recovery_phase_without_provider_or_launch_values() {
+        let timeout = crate::agent_backend::CONNECT_TIMEOUT_MESSAGE;
+        assert_eq!(crate::agent_backend::enrich_connect_error("custom-test", timeout), timeout);
+        assert!(!crate::agent_backend::enrich_connect_error("custom-test", &format!("{timeout} SECRET")).contains("SECRET"));
         for raw in [
             "session/load failed: SECRET",
             "prompt failed: SECRET",

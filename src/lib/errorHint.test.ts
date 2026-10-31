@@ -30,6 +30,7 @@ describe("error guidance", () => {
     ["session/new failed: workspace unavailable", "error.session"],
     ["failed to spawn: ENOENT\n\nIf this looks like auth: login", "error.startup"],
     ["request timed out", "error.timeout"],
+    ["Connection timed out before the agent completed its handshake. Check the agent and try connecting again.", "error.timeout"],
     ["fetch failed: ECONNREFUSED", "error.network"],
     ["respond_permission failed: request rejected", "error.permission"],
   ])("classifies %s", (message, key) => {
