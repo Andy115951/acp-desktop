@@ -456,12 +456,6 @@ impl AcpSession {
                                     },
                                 );
 
-                                let discovered = crate::session_discovery::discover_sessions(
-                                    &connection, &agent_id_for_prompt, &cwd,
-                                    capabilities.list_sessions,
-                                ).await;
-                                let _ = app.emit("acp://sessions", discovered);
-
                                 let sid = if let Some(saved_id) = resume_id {
                                     if !load_session_supported {
                                         let msg = "Agent does not advertise loadSession; Resume is unavailable. Use New session.";
@@ -586,6 +580,17 @@ impl AcpSession {
                                 );
                                 // Unblock connect_agent only once the session is usable.
                                 signal_connect_ready(&ready_for_thread, Ok(()));
+
+                                // Vendor history is optional: do not make a usable session
+                                // wait for pagination or a slow/failed session/list. The
+                                // scoped task is aborted when this connection exits.
+                                let _discovery = crate::session_discovery::start_discovery(
+                                    connection.clone(), agent_id_for_prompt.clone(), cwd.clone(),
+                                    capabilities.list_sessions, {
+                                        let app = app.clone();
+                                        move |result| { let _ = app.emit("acp://sessions", result); }
+                                    },
+                                );
 
                                 while let Some(cmd) = cmd_rx.recv().await {
                                     match cmd {

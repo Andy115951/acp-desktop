@@ -66,6 +66,13 @@ match, it remains visible separately. Clear the filter to see the full list;
 switching agent/workspace resets it. Search never sends a message or changes the
 selected conversation. A saved conversation without a title displays its full ID.
 
+When an agent supports session listing, discovery runs after the current session
+is ready rather than holding Connect or Resume open. The list may update later;
+an unsupported or incomplete listing keeps app-known entries. Disconnect stops
+the pending discovery. If Connect or Resume fails, discovery does not start;
+app-known entries remain available. Agents that serialize their own requests may
+still delay other requests while they process a list operation.
+
 ## Quickstart
 
 1. Install and log in to your intended agent CLI independently. Check the
