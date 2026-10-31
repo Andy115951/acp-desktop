@@ -252,7 +252,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   archiveSavedSession: () => editSavedEntry({ type: "archive" }),
   restoreSavedSession: (sessionId) => editSavedEntry({ type: "restore", sessionId }),
   selectWorkspace: async (cwd) => {
-    if (navigationBlocked(get()) || !isPlausibleCwd(cwd)) return;
+    if (navigationBlocked(get()) || !isPlausibleCwd(cwd) || get().cwd === cwd) return;
     const generation = ++contextGeneration;
     const agentId = currentAgentId();
     const previous = get();

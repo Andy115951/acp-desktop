@@ -64,18 +64,30 @@ describe("recent workspace picker", () => {
   it("includes the current folder once and escapes paths as text", () => {
     const html = renderToStaticMarkup(createElement(WorkspacePicker, {
       cwd: "/current", workspaces: [{ cwd: "/current", lastOpenedAt: 1 }, { cwd: "/<script>", lastOpenedAt: 0 }],
-      disabled: false, failed: false, locale: "en", onSelect: () => {},
+      disabled: false, failed: false, locale: "en", onSelect: () => {}, onBrowse: () => {},
     }));
     expect(html.match(/value="\/current"/g)).toHaveLength(1);
     expect(html).toContain('value="/current" selected=""');
+    expect(html).toContain('title="/current"');
+    expect(html).toContain('Pick folder');
+    expect(html).toContain('current — /current');
     expect(html).not.toContain("<script>");
   });
   it("shows localized empty and storage-failure states with selection disabled", () => {
     const html = renderToStaticMarkup(createElement(WorkspacePicker, {
-      cwd: null, workspaces: [], disabled: false, failed: true, locale: "zh-CN", onSelect: () => {},
+      cwd: null, workspaces: [], disabled: false, failed: true, locale: "zh-CN", onSelect: () => {}, onBrowse: () => {},
     }));
     expect(html).toContain('disabled=""');
     expect(html).toContain("暂无最近工作区");
     expect(html).toContain("无法读取或保存工作区快捷记录");
+  });
+  it("distinguishes folders with the same name and preserves non-ASCII paths", () => {
+    const html = renderToStaticMarkup(createElement(WorkspacePicker, {
+      cwd: "/一/project", workspaces: [{ cwd: "/二/project", lastOpenedAt: 1 }],
+      disabled: false, failed: false, locale: "zh-CN", onSelect: () => {}, onBrowse: () => {},
+    }));
+    expect(html).toContain("project — /一/project");
+    expect(html).toContain("project — /二/project");
+    expect(html).toContain("选择文件夹");
   });
 });

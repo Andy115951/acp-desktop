@@ -305,10 +305,13 @@ export default function App() {
           <section className="sidebar-section" aria-label={t(locale, "session.cwd")}>
             <div className="sidebar-section-heading">
               <span>{t(locale, "layout.workspace")}</span>
-              <button type="button" className="icon-button" onClick={() => void pickFolder()} disabled={contextLocked} title={t(locale, "session.pickFolder")} aria-label={t(locale, "session.pickFolder")}><ChatIcon name="folder" /></button>
             </div>
             <WorkspacePicker cwd={cwd} workspaces={recentWorkspaces} failed={workspaceError}
-              disabled={contextLocked} locale={locale} onSelect={(path) => void selectWorkspace(path)} />
+              disabled={contextLocked} locale={locale} onSelect={(path) => {
+                void selectWorkspace(path).then(() => {
+                  if (useSessionStore.getState().cwd === path) focusConversation();
+                });
+              }} onBrowse={() => void pickFolder()} />
           </section>
           <section className="sidebar-section history-section" aria-label={t(locale, "history.label")}>
             <SessionHistory key={JSON.stringify([selectedAgentId, cwd])} catalog={agentChanging ? { version: 1, sessions: [] } : catalog} cwd={cwd} savedSessionId={agentChanging ? null : savedSessionId}

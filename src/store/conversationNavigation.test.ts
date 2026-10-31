@@ -56,6 +56,14 @@ describe("draft-first conversation navigation", () => {
     state().setDraft("second text"); await state().openConversation("first");
     expect(state().draft).toBe("first text");
   });
+  it("keeps the active session and draft when the same workspace is selected", async () => {
+    await state().connect("resume");
+    state().setDraft("keep this draft");
+    mocks.invoke.mockClear();
+    await state().selectWorkspace("/workspace");
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(state()).toMatchObject({ connected: true, sessionId: "first", draft: "keep this draft", cwd: "/workspace" });
+  });
   it.each([{busy:true},{connecting:true},{submitting:true},{configuring:true},{permission:{requestId:1,title:"Ask",detail:"",options:[]}}])("guards navigation during active operations: %j", async patch => {
     state().setDraft("keep text"); useSessionStore.setState(patch);
     await state().newConversation(); await state().openConversation("second"); await state().selectWorkspace("/other");
