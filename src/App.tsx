@@ -307,7 +307,11 @@ export default function App() {
               <span>{t(locale, "layout.workspace")}</span>
             </div>
             <WorkspacePicker cwd={cwd} workspaces={recentWorkspaces} failed={workspaceError}
-              disabled={contextLocked} locale={locale} onSelect={(path) => void selectWorkspace(path)} onBrowse={() => void pickFolder()} />
+              disabled={contextLocked} locale={locale} onSelect={(path) => {
+                void selectWorkspace(path).then(() => {
+                  if (useSessionStore.getState().cwd === path) focusConversation();
+                });
+              }} onBrowse={() => void pickFolder()} />
           </section>
           <section className="sidebar-section history-section" aria-label={t(locale, "history.label")}>
             <SessionHistory key={JSON.stringify([selectedAgentId, cwd])} catalog={agentChanging ? { version: 1, sessions: [] } : catalog} cwd={cwd} savedSessionId={agentChanging ? null : savedSessionId}
