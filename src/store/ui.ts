@@ -1,4 +1,5 @@
 import { applyTheme, loadTheme, saveTheme, type Theme } from "../lib/theme";
+import { loadAutoConnect, saveAutoConnect } from "../lib/startupPreference";
 import { create } from "zustand";
 import { Store } from "@tauri-apps/plugin-store";
 import {
@@ -39,6 +40,8 @@ async function saveLocale(locale: Locale): Promise<void> {
 }
 
 type UiState = {
+  autoConnect: boolean;
+  setAutoConnect: (value: boolean) => void;
   theme: Theme;
   setTheme: (theme: Theme) => void;
   locale: Locale;
@@ -47,6 +50,8 @@ type UiState = {
 };
 
 export const useUiStore = create<UiState>((set, get) => ({
+  autoConnect: loadAutoConnect(),
+  setAutoConnect: (value) => { set({ autoConnect: value }); saveAutoConnect(value); },
   theme: loadTheme(),
   setTheme: (theme) => {
     set({ theme });
