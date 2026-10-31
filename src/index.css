@@ -96,6 +96,15 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
 .sidebar-section { margin-top: 26px; }
 .sidebar-section-heading { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
 .sidebar-section select { width: 100%; background: var(--field); border-color: var(--border); font-size: 12px; padding: 8px; }
+.workspace-picker { display: grid; gap: 8px; min-width: 0; }
+.workspace-current { display: grid; gap: 2px; min-width: 0; }
+.workspace-current strong, .workspace-current span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-current strong { color: var(--primary); font-size: 13px; }
+.workspace-current span, .workspace-empty, .workspace-recent-label { color: var(--muted); font-size: 11px; }
+.workspace-browse { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--primary); background: var(--field); font-size: 12px; text-align: left; }
+.workspace-browse:hover:not(:disabled) { background: var(--surface-hover); }
+.workspace-browse:disabled { opacity: .5; }
+.workspace-recent-label { display: grid; gap: 4px; min-width: 0; }
 .session-count { letter-spacing: 0; font-weight: 400; color: var(--faint); }
 .history-search { display: flex; align-items: center; min-width: 0; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--field); }
 .history-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
