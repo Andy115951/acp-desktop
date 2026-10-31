@@ -758,7 +758,7 @@ impl AcpSession {
                 clear_session_slot(&app);
                 Err("ACP thread exited before connect ready".into())
             },
-            ConnectWait::TimedOut => Err("Connection timed out before the agent completed its handshake. Check the agent and try connecting again.".into()),
+            ConnectWait::TimedOut => Err(crate::agent_backend::CONNECT_TIMEOUT_MESSAGE.into()),
         }
     }
 

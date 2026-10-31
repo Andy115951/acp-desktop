@@ -607,6 +607,8 @@ fn looks_like_spawn_failure(raw: &str) -> bool {
     .any(|k| lower.contains(k))
 }
 
+pub(crate) const CONNECT_TIMEOUT_MESSAGE: &str = "Connection timed out before the agent completed its handshake. Check the agent and try connecting again.";
+
 /// Append vendor-specific guidance to a raw connect/handshake error.
 ///
 /// Keeps the original message first so matchers like `session/load failed`
@@ -615,6 +617,10 @@ pub fn enrich_connect_error(agent_id: &str, raw: &str) -> String {
     // This app-owned message must survive all vendor/custom error wrappers.
     if raw.contains(crate::protocol_init::UNSUPPORTED_VERSION) {
         return crate::protocol_init::UNSUPPORTED_VERSION.into();
+    }
+    // Only the exact app-generated text is safe to retain for custom agents.
+    if raw == CONNECT_TIMEOUT_MESSAGE {
+        return CONNECT_TIMEOUT_MESSAGE.into();
     }
     // Custom subprocess errors can echo argv, env or inherited credentials.
     // Keep only the phase needed for recovery, never arbitrary provider text.
