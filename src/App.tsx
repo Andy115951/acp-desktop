@@ -406,6 +406,8 @@ export default function App() {
               disabled={agentChanging || busy || connecting || submitting || configuring || switching || !!permission} onCommand={insertCommand} configFailed={configError} onConfigure={(id, value) => void setConfig(id, value)} /></div>
           </details>}
           <MessageComposer draft={draft} locale={locale}
+            contextKey={JSON.stringify([selectedAgentId, cwd, sessionId])}
+            commands={!contextLocked && connected && metadata?.agentId === selectedAgentId && metadata.cwd === cwd && metadata.sessionId === sessionId ? metadata.commands : undefined}
             disabled={agentChanging || switching || !!permission} working={busy || configuring} connecting={connecting} focusToken={composerFocus}
             permissionOpen={!!permission} canSend={canSend} canCancel={canCancel} connected={connected}
             agentName={selected?.name ?? "Agent"}

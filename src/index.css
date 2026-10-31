@@ -177,6 +177,15 @@ button:focus-visible, select:focus-visible, summary:focus-visible, textarea:focu
 .welcome-context span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .welcome-context svg { width: 13px; height: 13px; }
 .composer-dock { flex-shrink: 0; width: min(100%, 820px); margin: 0 auto; padding: 8px 32px 15px; }
+.composer-container { position: relative; }
+.command-picker { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 5; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--panel); box-shadow: 0 5px 24px #00000024; padding: 8px; }
+.command-picker-help { font-size: 10px; color: var(--muted); padding: 3px 6px 8px; }
+.command-picker-list { max-height: min(28vh, 220px); overflow-y: auto; overscroll-behavior: contain; }
+.command-picker-list button { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 8px; text-align: left; border-radius: 6px; overflow-wrap: anywhere; }
+.command-picker-list button[aria-selected="true"], .command-picker-list button:hover { background: var(--surface-hover); }
+.command-picker-list strong { color: var(--primary); font-size: 12px; }
+.command-picker-list span { color: var(--muted); font-size: 11px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.command-picker-list small { color: var(--faint); font-size: 10px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
 .composer-box { border: 1px solid var(--border); border-radius: 15px; background: var(--surface); box-shadow: 0 3px 14px #0000000d; overflow: hidden; }
 .composer-box:focus-within { border-color: var(--focus); }
 .composer-box textarea { display: block; width: 100%; min-height: 70px; max-height: min(32vh, 240px); padding: 16px 18px 8px; resize: none; overflow-y: auto; outline: none; border: 0; background: transparent; color: var(--primary); font-size: 14px; line-height: 1.7; }

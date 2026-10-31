@@ -11,6 +11,7 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "composer.commands" | "composer.commandsHelp" | "composer.commandsHint"
   | "shortcuts.title" | "shortcuts.composer" | "shortcuts.help"
   | "settings.title" | "settings.close" | "settings.appearance" | "settings.resumeEditing" | "history.manage"
   | "navigation.newConversation" | "navigation.newHelp" | "navigation.cancelConnection"
@@ -205,6 +206,9 @@ export type MessageKey =
 type Dictionary = Record<MessageKey, string>;
 
 const en: Dictionary = {
+  "composer.commands": "Agent commands",
+  "composer.commandsHelp": "↑ ↓ to choose · Enter to insert · Esc to dismiss",
+  "composer.commandsHint": "Type / for agent commands",
   "shortcuts.title": "Keyboard shortcuts",
   "shortcuts.composer": "Focus message input",
   "shortcuts.help": "These shortcuts work in this window. New opens a draft. Navigation pauses during active actions; settings and permission decisions keep their own focus.",
@@ -435,6 +439,9 @@ const en: Dictionary = {
 };
 
 const zhCN: Dictionary = {
+  "composer.commands": "智能体命令",
+  "composer.commandsHelp": "↑ ↓ 选择 · Enter 填入 · Esc 收起",
+  "composer.commandsHint": "输入 / 查看智能体命令",
   "shortcuts.title": "键盘快捷键",
   "shortcuts.composer": "聚焦消息输入框",
   "shortcuts.help": "快捷键仅在当前窗口生效。新建只打开草稿；操作进行中会保护导航，设置和权限确认保留自己的焦点。",
