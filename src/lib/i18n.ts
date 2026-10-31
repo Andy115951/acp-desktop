@@ -11,6 +11,7 @@ export const LOCALES: readonly Locale[] = ["en", "zh-CN"] as const;
 
 /** Message keys used by App / PermissionCard chrome. */
 export type MessageKey =
+  | "startup.title" | "startup.autoConnect" | "startup.description"
   | "shortcuts.title" | "shortcuts.composer" | "shortcuts.help"
   | "settings.title" | "settings.close" | "settings.appearance" | "settings.resumeEditing" | "history.manage"
   | "navigation.newConversation" | "navigation.newHelp" | "navigation.cancelConnection"
@@ -211,6 +212,9 @@ const en: Dictionary = {
   "settings.title": "Settings",
   "settings.close": "Close settings",
   "settings.appearance": "Appearance & language",
+  "startup.title": "Startup",
+  "startup.autoConnect": "Connect the last agent on startup",
+  "startup.description": "Uses the last workspace and conversation when available. Starts the agent but never sends a message. Changes apply on the next launch.",
   "settings.resumeEditing": "An unfinished agent change is waiting in Settings. Finish or cancel it to continue.",
   "history.manage": "Manage conversations",
   "navigation.newConversation": "New conversation",
@@ -441,6 +445,9 @@ const zhCN: Dictionary = {
   "settings.title": "设置",
   "settings.close": "关闭设置",
   "settings.appearance": "外观与语言",
+  "startup.title": "启动",
+  "startup.autoConnect": "启动时连接上次使用的智能体",
+  "startup.description": "使用上次的工作区和对话（如有）。会启动智能体，但不会自动发送消息。更改将在下次启动时生效。",
   "settings.resumeEditing": "设置中还有未完成的智能体修改，请完成或取消后继续。",
   "history.manage": "管理对话",
   "navigation.newConversation": "新建对话",

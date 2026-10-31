@@ -27,6 +27,7 @@ import { useAgentsStore } from "./store/agents";
 import { useSessionStore } from "./store/session";
 import { useUiStore } from "./store/ui";
 import type { Theme } from "./lib/theme";
+import { prepareStartup } from "./lib/startupConnection";
 
 export default function App() {
   // Overlay title bars are macOS-only; other platforms retain native decorations.
@@ -77,16 +78,14 @@ export default function App() {
     draftTarget,
     setDraft,
     pickFolder,
-    hydrateFromPrefs,
     connect,
     disconnect,
     send,
     cancel,
     respondPermission,
     clearTranscript,
-    bindEvents,
   } = useSessionStore();
-  const { locale, hydrateLocale, setLocale, theme, setTheme } = useUiStore();
+  const { locale, hydrateLocale, setLocale, theme, setTheme, autoConnect, setAutoConnect } = useUiStore();
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches);
   const [composerFocus, setComposerFocus] = useState(0);
@@ -100,6 +99,8 @@ export default function App() {
   const agentSettingsRef = useRef<HTMLDetailsElement>(null);
   const previousSidebarOpen = useRef(sidebarOpen);
   const focusComposerOnClose = useRef(false);
+  const prevAgentRef = useRef(selectedAgentId);
+  const startingRef = useRef(true);
   useEffect(() => {
     if (previousSidebarOpen.current && !sidebarOpen && !focusComposerOnClose.current) sidebarToggleRef.current?.focus();
     focusComposerOnClose.current = false;
@@ -129,23 +130,29 @@ export default function App() {
     void hydrateLocale();
   }, [hydrateLocale]);
 
-  // Detect agents (and selectedAgentId prefs) before restoring lastCwd /
-  // Resume — parallel hydrate raced detect and could stamp the wrong vendor’s
-  // session id onto the Switch selection.
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      await refresh();
-      if (!cancelled) await hydrateFromPrefs();
-    })();
+    let cleanup: (() => void) | undefined;
+    startingRef.current = true;
+    void prepareStartup(() => cancelled, fn => { cleanup = fn; }, id => { prevAgentRef.current = id; })
+      .catch(console.error).finally(() => {
+        if (cancelled) return;
+        startingRef.current = false;
+        const agentId = useAgentsStore.getState().selectedAgentId;
+        if (prevAgentRef.current !== agentId) {
+          prevAgentRef.current = agentId;
+          void useSessionStore.getState().reloadForAgent(agentId);
+        }
+      });
     return () => {
       cancelled = true;
+      cleanup?.();
     };
-  }, [refresh, hydrateFromPrefs]);
+  }, []);
 
   // Per-vendor histories: on agent switch, drop live session + reload Resume id.
-  const prevAgentRef = useRef(selectedAgentId);
   useEffect(() => {
+    if (startingRef.current) return;
     if (prevAgentRef.current === selectedAgentId) return;
     prevAgentRef.current = selectedAgentId;
     const run = async () => {
@@ -157,14 +164,6 @@ export default function App() {
     };
     void run();
   }, [selectedAgentId]);
-
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    void bindEvents().then((fn) => {
-      cleanup = fn;
-    });
-    return () => cleanup?.();
-  }, [bindEvents]);
 
   useEffect(() => {
     if (!permission) return;
@@ -422,6 +421,11 @@ export default function App() {
         {error && <ErrorNotice error={error} locale={locale} />}
         {detectError && <ErrorNotice error={detectError} locale={locale} />}
         <ShortcutReference ref={shortcutRef} locale={locale} macOS={macOS} />
+        <section className="settings-appearance" aria-label={t(locale, "startup.title")}>
+          <h3>{t(locale, "startup.title")}</h3>
+          <label className="text-xs text-ui-muted"><input type="checkbox" checked={autoConnect} onChange={e => setAutoConnect(e.target.checked)} /> {t(locale, "startup.autoConnect")}</label>
+          <p className="text-xs text-ui-muted">{t(locale, "startup.description")}</p>
+        </section>
         <section className="settings-appearance" aria-label={t(locale, "settings.appearance")}><h3>{t(locale, "settings.appearance")}</h3>
           <div className="sidebar-preferences">
             <label htmlFor="theme-select" className="text-xs text-ui-muted">{t(locale, "theme.label")}</label>

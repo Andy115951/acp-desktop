@@ -126,6 +126,8 @@ let lineCounter = 0;
 let draftRevision = 0;
 let connectionGeneration = 0;
 let contextGeneration = 0;
+let startupInterventionRevision = 0;
+export const getStartupInterventionRevision = () => startupInterventionRevision;
 let connectionAgentId: string | null = null;
 let activeConnectionToken: string | null = null;
 const acceptsEvent = (event: { connectionToken?: string }) => !event.connectionToken || event.connectionToken === activeConnectionToken;
@@ -185,6 +187,7 @@ async function loadRecentWorkspaces() {
 export const useSessionStore = create<SessionState>((set, get) => ({
   drafts: {}, draftTarget: null, connecting: false, submitting: false, recoveryRequired: false,
   newConversation: async () => {
+    ++startupInterventionRevision;
     const state = get();
     if (navigationBlocked(state)) return;
     const agentId = currentAgentId();
@@ -213,6 +216,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
   openConversation: async (sessionId) => {
+    ++startupInterventionRevision;
     const state = get();
     if (navigationBlocked(state) || !state.cwd) return;
     if (!sessionsForWorkspace(state.catalog, state.cwd).some(entry => entry.sessionId === sessionId)) return;
@@ -252,6 +256,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   archiveSavedSession: () => editSavedEntry({ type: "archive" }),
   restoreSavedSession: (sessionId) => editSavedEntry({ type: "restore", sessionId }),
   selectWorkspace: async (cwd) => {
+    ++startupInterventionRevision;
     if (navigationBlocked(get()) || !isPlausibleCwd(cwd) || get().cwd === cwd) return;
     const generation = ++contextGeneration;
     const agentId = currentAgentId();
@@ -286,6 +291,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   switching: false,
   selectSavedSession: (sessionId) => {
+    ++startupInterventionRevision;
     const state = get();
     if (state.connected || navigationBlocked(state) || !state.cwd) return;
     if (!sessionsForWorkspace(state.catalog, state.cwd).some((entry) => entry.sessionId === sessionId)) return;
@@ -304,7 +310,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   lines: [],
   permission: null,
   draft: "",
-  setDraft: (v) => { ++draftRevision; set({ draft: v, draftTarget: targetFor(get()) }); },
+  setDraft: (v) => { ++startupInterventionRevision; ++draftRevision; set({ draft: v, draftTarget: targetFor(get()) }); },
   setConfig: async (id, value) => {
     const state = get();
     const option = state.metadata?.configOptions?.find(option => option.id === id);
@@ -330,6 +336,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   clearTranscript: () => set(sessionPatchAfterClear()),
   pickFolder: async () => {
+    ++startupInterventionRevision;
     if (navigationBlocked(get())) return;
     const generation = ++contextGeneration;
     const agentId = currentAgentId();

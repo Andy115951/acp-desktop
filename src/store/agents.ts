@@ -27,6 +27,8 @@ export type AgentOverride = {
 };
 
 const PREFS_FILE = "prefs.json";
+let agentSelectionRevision = 0;
+export const getAgentSelectionRevision = () => agentSelectionRevision;
 let prefsStore: Store | null = null;
 
 async function getPrefsStore(): Promise<Store> {
@@ -60,6 +62,7 @@ type AgentsState = {
   agents: AgentInfo[];
   /** Selected agent id for connect_agent (default grok). */
   selectedAgentId: string;
+  restoredAgentId: string | null;
   loading: boolean;
   customEditing: boolean;
   setCustomEditing: (editing: boolean) => void;
@@ -73,6 +76,7 @@ type AgentsState = {
 export const useAgentsStore = create<AgentsState>((set, get) => ({
   agents: [],
   selectedAgentId: "grok",
+  restoredAgentId: null,
   loading: false,
   customEditing: false,
   setCustomEditing: (customEditing) => set({ customEditing }),
@@ -91,6 +95,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
         agents,
         override,
         loading: false,
+        restoredAgentId: savedId,
         selectedAgentId: pickConnectableAgentId(agents, preferred),
       });
     } catch (err) {
@@ -99,6 +104,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     }
   },
   selectAgent: (id) => {
+    ++agentSelectionRevision;
     // Only select connectable agents (or leave selection if list empty / unknown).
     if (!canSelectAgentId(get().agents, id)) return;
     if (get().selectedAgentId === id) return;
