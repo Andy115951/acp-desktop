@@ -35,6 +35,41 @@ beforeEach(async () => {
 });
 
 describe("draft-first conversation navigation", () => {
+  it("restarts the same resumable session without sending and retains its draft", async () => {
+    await state().connect("resume");
+    useSessionStore.setState({ loadSessionSupported: true });
+    state().setDraft("unsent draft"); mocks.invoke.mockClear();
+    await state().reconnect();
+    expect(mocks.invoke.mock.calls.map(call => call[0])).toEqual(["disconnect_agent", "connect_agent"]);
+    expect(mocks.invoke.mock.calls[1][1]).toMatchObject({ agentId: "codex", cwd: "/workspace", resumeSessionId: "first" });
+    expect(state()).toMatchObject({ connected: true, sessionId: "first", draft: "unsent draft" });
+    expect(prompts()).toHaveLength(0);
+  });
+  it.each([{busy:true},{submitting:true},{configuring:true},{permission:{requestId:1,title:"Ask",detail:"",options:[]}},{loadSessionSupported:false},{loadSessionSupported:null}])("does not reconnect during active operations or without resume support: %j", async patch => {
+    await state().connect("resume"); useSessionStore.setState({ loadSessionSupported: true, ...patch }); mocks.invoke.mockClear();
+    await state().reconnect();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(state().connected).toBe(true);
+  });
+  it("locks navigation while disconnecting and does not resume a stale context", async () => {
+    await state().connect("resume"); useSessionStore.setState({ loadSessionSupported: true });
+    const stop = deferred(); mocks.invoke.mockClear();
+    mocks.invoke.mockImplementation((cmd, args) => cmd === "disconnect_agent" ? stop.promise : cmd === "connect_agent" ? ready(args) : undefined);
+    const pending = state().reconnect();
+    await state().selectWorkspace("/other"); await state().newConversation();
+    expect(state()).toMatchObject({switching:true,cwd:"/workspace",savedSessionId:"first"});
+    useAgentsStore.setState({selectedAgentId:"copilot"}); stop.resolve(undefined); await pending;
+    expect(mocks.invoke.mock.calls.map(call => call[0])).toEqual(["disconnect_agent"]);
+    expect(state().switching).toBe(false);
+  });
+  it("keeps the visible transcript and draft if the reconnect fails", async () => {
+    await state().connect("resume");
+    const lines = [{id:"previous",kind:"agent_message" as const,text:"earlier response"}];
+    useSessionStore.setState({loadSessionSupported:true,lines}); state().setDraft("unsent");
+    mocks.invoke.mockImplementation(async cmd => { if (cmd === "connect_agent") throw new Error("agent unavailable"); });
+    await state().reconnect();
+    expect(state()).toMatchObject({connected:false, draft:"unsent", lines, error:"agent unavailable"});
+  });
   it("opens New without a process, keeps repeated New drafts and restores each conversation's text", async () => {
     state().setDraft("history draft");
     await state().newConversation();

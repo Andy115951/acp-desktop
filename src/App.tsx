@@ -79,6 +79,7 @@ export default function App() {
     setDraft,
     pickFolder,
     connect,
+    reconnect,
     disconnect,
     send,
     cancel,
@@ -358,7 +359,12 @@ export default function App() {
           </span>
           <div className="connection-actions">
             {!cwd && <button type="button" className="subtle-button" onClick={() => void pickFolder()} disabled={contextLocked}>{t(locale, "session.pickFolder")}</button>}
-            {connecting ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "navigation.cancelConnection")}</button> : connected ? <button type="button" className="subtle-button" disabled={agentChanging || switching} onClick={() => void disconnect()}>{t(locale, "session.disconnect")}</button> : <>
+            {connecting ? <button type="button" className="subtle-button" onClick={() => void disconnect()}>{t(locale, "navigation.cancelConnection")}</button> : connected ? <>
+              <button type="button" className="subtle-button" disabled={contextLocked || loadSessionSupported !== true || !sessionId || savedSessionId !== sessionId}
+                title={t(locale, loadSessionSupported === true ? "connection.reconnectHelp" : "connection.reconnectUnsupported")}
+                onClick={() => void reconnect()}>{t(locale, "connection.reconnect")}</button>
+              <button type="button" className="subtle-button" disabled={agentChanging || switching} onClick={() => void disconnect()}>{t(locale, "session.disconnect")}</button>
+            </> : <>
               {savedSessionId && <button type="button" className="subtle-button" onClick={() => void connect("resume")} disabled={!canResume}
                 aria-describedby={!busy ? "connection-help" : undefined}
                 title={loadSessionSupported === false ? t(locale, "session.resumeTitleUnsupported") : t(locale, "connection.resumeHelp")}>{t(locale, "connection.connectResume")}</button>}

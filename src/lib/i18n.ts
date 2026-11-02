@@ -17,6 +17,7 @@ export type MessageKey =
   | "navigation.newConversation" | "navigation.newHelp" | "navigation.cancelConnection"
   | "navigation.placeholderDraft" | "navigation.firstSend" | "navigation.connectingDraft"
   | "connection.connectNew" | "connection.connectResume" | "connection.connecting"
+  | "connection.reconnect" | "connection.reconnectHelp" | "connection.reconnectUnsupported"
   | "connection.chooseWorkspace" | "connection.checking" | "connection.missingAgent"
   | "connection.finishEditing" | "connection.readySaved" | "connection.ready"
   | "connection.newHelp" | "connection.resumeHelp" | "connection.firstDownload"
@@ -226,6 +227,9 @@ const en: Dictionary = {
   "connection.connectNew": "Connect & start new",
   "connection.connectResume": "Connect & resume",
   "connection.connecting": "Connecting…",
+  "connection.reconnect": "Reconnect",
+  "connection.reconnectHelp": "Restart the agent and resume this conversation. No message is sent.",
+  "connection.reconnectUnsupported": "This agent cannot resume the current conversation.",
   "connection.chooseWorkspace": "Choose a workspace folder, then connect your agent.",
   "connection.checking": "Checking installed agents…",
   "connection.missingAgent": "{name} was not found locally. Open Agents & settings to check its setup or choose another installed agent.",
@@ -459,6 +463,9 @@ const zhCN: Dictionary = {
   "connection.connectNew": "连接并新建",
   "connection.connectResume": "连接并恢复",
   "connection.connecting": "正在连接…",
+  "connection.reconnect": "重新连接",
+  "connection.reconnectHelp": "重新启动智能体并恢复当前对话，不会自动发送消息。",
+  "connection.reconnectUnsupported": "此智能体无法恢复当前对话。",
   "connection.chooseWorkspace": "先选择工作区文件夹，再连接智能体。",
   "connection.checking": "正在检测本机智能体…",
   "connection.missingAgent": "未在本机找到 {name}。打开「智能体与设置」检查配置，或选择其他已安装的智能体。",
