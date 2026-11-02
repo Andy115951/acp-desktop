@@ -114,6 +114,7 @@ type SessionState = {
   hydrateFromPrefs: () => Promise<void>;
   reloadForAgent: (agentId: string) => Promise<void>;
   connect: (mode?: "new" | "resume") => Promise<ConnectedSession | null>;
+  reconnect: () => Promise<void>;
   disconnect: () => Promise<void>;
   send: () => Promise<void>;
   cancel: () => Promise<void>;
@@ -498,6 +499,33 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return null;
     } finally {
       if (generation === connectionGeneration) set({ connecting: false });
+    }
+  },
+  reconnect: async () => {
+    const state = get();
+    if (!state.connected || navigationBlocked(state) || state.loadSessionSupported !== true
+      || !state.cwd || !state.sessionId || state.savedSessionId !== state.sessionId) return;
+    const agentId = currentAgentId();
+    const cwd = state.cwd;
+    const sessionId = state.sessionId;
+    const context = ++contextGeneration;
+    set({ switching: true });
+    try {
+      const stopping = get().disconnect();
+      const generation = connectionGeneration;
+      await stopping;
+      if (context !== contextGeneration || generation !== connectionGeneration || currentAgentId() !== agentId
+        || get().cwd !== cwd || get().savedSessionId !== sessionId) return;
+      set({ switching: false });
+      const resuming = get().connect("resume");
+      const resumeGeneration = connectionGeneration;
+      const ready = await resuming;
+      if (!ready && context === contextGeneration && resumeGeneration === connectionGeneration
+        && currentAgentId() === agentId && get().cwd === cwd && !get().connected) set({ lines: state.lines });
+    } catch {
+      if (context === contextGeneration) set({ error: "Could not disconnect the agent. Try again." });
+    } finally {
+      if (context === contextGeneration) set({ switching: false });
     }
   },
   disconnect: async () => {
